@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, CheckCircle2, Grid2X2, List, Plus, RefreshCw } from "lucide-vue-next";
+import { Bell, CalendarX, CheckCheck, CheckCircle2, CircleCheck, FileText, Grid2X2, List, Plus, RefreshCw, TriangleAlert } from "lucide-vue-next";
 import type { Contract } from "~/types/api";
 import type { SortMode, StatusFilter } from "~/utils/contracts";
 import { sortContracts } from "~/utils/contracts";
@@ -74,11 +74,11 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
   <ModuleWorkspace eyebrow="Projetos e Arquitetura · Contratos" title="Contratos" description="Acompanhe vigências, fornecedores, valores e contratos que exigem atenção.">
     <div class="contracts-dashboard">
       <section class="contract-kpis">
-        <ContractKpiCard label="Total de contratos" :value="kpis.total" :active="statusFilter==='Todos'" tone="total" @click="statusFilter='Todos'" />
-        <ContractKpiCard label="Vencidos" :value="kpis.vencido" :active="statusFilter==='Vencido'" tone="danger" @click="setStatus('Vencido')" />
-        <ContractKpiCard label="Atenção · 20 dias" :value="kpis.atencao" :active="statusFilter==='Atencao'" tone="warning" @click="setStatus('Atencao')" />
-        <ContractKpiCard label="Regulares" :value="kpis.regular" :active="statusFilter==='Regular'" tone="success" @click="setStatus('Regular')" />
-        <ContractKpiCard label="Finalizados" :value="kpis.finalizado" :active="statusFilter==='Finalizado'" tone="muted" @click="setStatus('Finalizado')" />
+        <ContractKpiCard label="Total de contratos" :value="kpis.total" :active="statusFilter==='Todos'" tone="default" :icon="FileText" @click="statusFilter='Todos'" />
+        <ContractKpiCard label="Regulares" :value="kpis.regular" :active="statusFilter==='Regular'" tone="good" :icon="CircleCheck" @click="setStatus('Regular')" />
+        <ContractKpiCard label="Atenção · 20 dias" :value="kpis.atencao" :active="statusFilter==='Atencao'" tone="default" :icon="TriangleAlert" class="attention" @click="setStatus('Atencao')" />
+        <ContractKpiCard label="Vencidos" :value="kpis.vencido" :active="statusFilter==='Vencido'" tone="bad" :icon="CalendarX" @click="setStatus('Vencido')" />
+        <ContractKpiCard label="Finalizados" :value="kpis.finalizado" :active="statusFilter==='Finalizado'" tone="default" :icon="CheckCheck" @click="setStatus('Finalizado')" />
       </section>
 
       <section class="surface contracts-surface">

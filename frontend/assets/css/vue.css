@@ -251,6 +251,38 @@ button:disabled {
 .metric-card.bad {
   border-top: 3px solid #c0392b;
 }
+.metric-card.has-icon {
+  position: relative;
+  border-top: 1px solid #e4eaf2;
+}
+.metric-card.has-icon .label {
+  display: block;
+  padding-right: 42px;
+}
+.metric-icon {
+  position: absolute;
+  top: 15px;
+  right: 16px;
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border-radius: 8px;
+  background: #edf2f8;
+  color: #526b8c;
+}
+.metric-card.good .metric-icon {
+  background: #edf5e9;
+  color: #4f7d3b;
+}
+.metric-card.bad .metric-icon {
+  background: #fbe8e8;
+  color: #a53f3f;
+}
+.metric-card.attention .metric-icon {
+  background: #fff3d9;
+  color: #a96600;
+}
 
 .module-placeholder {
   display: grid;
@@ -576,51 +608,21 @@ button:disabled {
   gap: 10px;
 }
 .contract-kpi {
-  min-height: 94px;
-  border: 1px solid #e2e8f0;
-  border-top: 4px solid #7890b1;
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: #fff;
   text-align: left;
-  box-shadow: 0 6px 18px rgba(35, 55, 86, 0.045);
-  transition: 0.15s ease;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
-.contract-kpi:hover,
-.contract-kpi.active {
+.contract-kpi:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(35, 55, 86, 0.1);
   border-color: #b7c5d8;
 }
-.contract-kpi span {
-  display: block;
-  color: #78869a;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.045em;
+.contract-kpi.active {
+  border-color: #6687b8;
+  background: #f8fafd;
 }
-.contract-kpi strong {
-  display: block;
-  margin-top: 7px;
-  color: #20324a;
-  font-size: 27px;
-  line-height: 1;
-}
-.contract-kpi.danger {
-  border-top-color: #c0392b;
-}
-.contract-kpi.warning {
-  border-top-color: #eaa239;
-}
-.contract-kpi.success {
-  border-top-color: #609346;
-}
-.contract-kpi.muted {
-  border-top-color: #94a3b8;
-}
-.contract-kpi.total {
-  border-top-color: #304f7e;
+.contract-kpi:focus-visible {
+  outline: 3px solid rgba(48, 79, 126, 0.35);
+  outline-offset: 2px;
 }
 .contracts-surface {
   overflow: hidden;
@@ -1640,19 +1642,37 @@ button:disabled {
 }
 
 /* ===== Dashboard (Etapa 5) ===== */
+.dashboard-metric-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
 .dashboard-filter-bar {
   grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  background: #fff;
 }
-.contract-filter-bar input[type="date"] {
-  height: 38px;
+.dashboard-filter-bar label > span {
+  color: #56657a;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+.dashboard-filter-bar input[type="date"],
+.dashboard-filter-bar select {
+  min-height: 39px;
   min-width: 0;
-  border: 1px solid #dce4ee;
+  border: 1px solid #d8e0ea;
   border-radius: 9px;
   background: #fff;
-  padding: 0 9px;
-  color: #334155;
-  font-size: 12px;
+  padding: 8px 10px;
+  color: #26364d;
+  font-size: 13px;
   outline: none;
+}
+.dashboard-filter-bar input[type="date"]:focus,
+.dashboard-filter-bar select:focus {
+  border-color: #6687b8;
+  box-shadow: 0 0 0 3px rgba(48, 79, 126, 0.12);
+}
+.dashboard-filter-bar .filter-actions {
+  gap: 8px;
 }
 .icon-control:disabled {
   opacity: 0.45;
@@ -1664,82 +1684,10 @@ button:disabled {
   color: #718096;
   font-size: 11.5px;
 }
-.dashboard-kpi {
-  cursor: default;
-}
-.dashboard-kpi small {
-  display: block;
-  margin-top: 6px;
-  color: #8a97ab;
-  font-size: 11px;
-  font-weight: 700;
-}
-.on-time-card {
-  padding: 16px 18px;
-  display: grid;
-  gap: 10px;
-}
-.on-time-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.on-time-head strong {
-  color: #4a7b36;
-  font-size: 26px;
-  font-weight: 850;
-  margin-right: 10px;
-}
-.on-time-head strong.bad {
-  color: #a76b11;
-}
-.on-time-head span {
-  color: #4b5b70;
-  font-size: 12px;
-  font-weight: 700;
-}
-.on-time-head small {
-  color: #8a97ab;
-  font-size: 11px;
-}
-.on-time-track {
-  display: flex;
-  height: 22px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #eef1f5;
-}
-.on-time-track span {
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 800;
-  transition: width 0.3s ease;
-}
-.on-time-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  color: #5f6e82;
-  font-size: 11px;
-}
-.on-time-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.on-time-legend i {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-}
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 18px;
 }
 .dashboard-grid .span-2 {
   grid-column: 1/-1;
@@ -1754,29 +1702,36 @@ button:disabled {
   margin-bottom: 12px;
 }
 .stat-tiles > div {
-  border: 1px solid #e7edf4;
-  border-radius: 11px;
-  padding: 12px;
-  background: #fbfcfe;
+  border: 1px solid #e4e9f0;
+  border-radius: 9px;
+  padding: 13px;
+  background: #fafbfd;
 }
 .stat-tiles span {
   display: block;
-  color: #78869a;
-  font-size: 10px;
-  font-weight: 800;
+  color: #79869a;
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.045em;
   text-transform: uppercase;
 }
 .stat-tiles strong {
   display: block;
-  margin-top: 6px;
-  color: #20324a;
-  font-size: 18px;
+  margin-top: 5px;
+  color: #253c59;
+  font-size: 20px;
+  font-weight: 750;
 }
 .stat-tiles .danger {
   color: #a83128;
 }
 .stat-tiles .warning {
   color: #a76b11;
+}
+@media (max-width: 1100px) {
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 @media (max-width: 1000px) {
   .dashboard-grid {
@@ -1787,6 +1742,27 @@ button:disabled {
   }
   .stat-tiles.four {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 599px) {
+  .dashboard-filter-bar {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-filter-bar .filter-actions {
+    width: 100%;
+  }
+  .dashboard-filter-bar .filter-actions .btn {
+    flex: 1;
+  }
+}
+@media (max-width: 420px) {
+  .dashboard-metric-grid {
+    grid-template-columns: 1fr;
   }
 }
 

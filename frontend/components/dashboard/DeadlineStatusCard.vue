@@ -56,7 +56,7 @@ const max = computed(() => Math.max(1, ...props.deadlines.map((item) => item.cou
 <style scoped>
 .deadlines { display: grid; gap: 14px; }
 .deadlines-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.deadlines-summary > div { border: 1px solid #e7edf4; border-radius: 11px; padding: 10px 12px; background: #fbfcfe; }
+.deadlines-summary > div { border: 1px solid #e4e9f0; border-radius: 9px; padding: 10px 12px; background: #fafbfd; }
 .deadlines-summary strong { display: block; color: #20324a; font-size: 22px; line-height: 1.1; }
 .deadlines-summary span { color: #78869a; font-size: 10.5px; font-weight: 700; }
 .deadlines-summary .critical strong { color: #a83128; }

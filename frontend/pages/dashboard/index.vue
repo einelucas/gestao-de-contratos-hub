@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BarChart3, CalendarClock, CircleDollarSign, FilterX, PieChart, RefreshCw, Timer, TrendingUp } from "lucide-vue-next";
+import { BarChart3, CalendarClock, CalendarX, CheckCheck, CircleCheck, CircleDollarSign, FileText, FilterX, PieChart, RefreshCw, Timer, TrendingUp, TriangleAlert } from "lucide-vue-next";
 import type { ContractSummary, Sector } from "~/types/api";
 import { money } from "~/utils/contracts";
 import { formatNumber, formatPercent } from "~/utils/format";
@@ -58,22 +58,12 @@ const kpiCards = computed(() => {
   const k = kpis.value;
   if (!k) return [];
   return [
-    { label: "Total de contratos", value: k.total, sub: `${k.active} ativos`, tone: "total" },
-    { label: "Regulares", value: k.regular, sub: formatPercent(percentOf("Regular")), tone: "success" },
-    { label: "Atenção · 20 dias", value: k.atencao, sub: formatPercent(percentOf("Atencao")), tone: "warning" },
-    { label: "Vencidos", value: k.vencido, sub: formatPercent(percentOf("Vencido")), tone: "danger" },
-    { label: "Finalizados", value: k.finalizado, sub: formatPercent(percentOf("Finalizado")), tone: "muted" },
+    { label: "Total de contratos", value: k.total, sub: `${k.active} ativos`, tone: "default" as const, icon: FileText },
+    { label: "Regulares", value: k.regular, sub: formatPercent(percentOf("Regular")), tone: "good" as const, icon: CircleCheck },
+    { label: "Atenção · 20 dias", value: k.atencao, sub: formatPercent(percentOf("Atencao")), tone: "default" as const, icon: TriangleAlert },
+    { label: "Vencidos", value: k.vencido, sub: formatPercent(percentOf("Vencido")), tone: "bad" as const, icon: CalendarX },
+    { label: "Finalizados", value: k.finalizado, sub: formatPercent(percentOf("Finalizado")), tone: "default" as const, icon: CheckCheck },
   ];
-});
-
-const onTimeParts = computed(() => {
-  const k = kpis.value;
-  if (!k || !k.onTimeBase) return [];
-  return [
-    { label: "Regulares", value: k.regular, color: STATUS_COLOR.Regular },
-    { label: "Atenção", value: k.atencao, color: STATUS_COLOR.Atencao },
-    { label: "Vencidos", value: k.vencido, color: STATUS_COLOR.Vencido },
-  ].map((part) => ({ ...part, width: (part.value / k.onTimeBase) * 100 }));
 });
 
 const statusDonut = computed(() =>
@@ -139,8 +129,8 @@ const valueByUnit = computed(() =>
           <label><span>Setor</span><select v-model="filters.sectorId"><option value="">Todos os setores</option><option v-for="item in sectors" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
           <label><span>Unidade</span><select v-model="filters.unit"><option value="">Todas</option><option v-for="item in units" :key="item" :value="item">{{ item }}</option></select></label>
           <div class="filter-actions">
-            <button type="button" class="icon-control" title="Limpar filtros" :disabled="!hasFilters" @click="clearFilters"><FilterX class="size-4" /></button>
-            <button type="button" class="icon-control" title="Atualizar" :disabled="loading" @click="load"><RefreshCw class="size-4" /></button>
+            <button type="button" class="btn" :disabled="!hasFilters" @click="clearFilters"><FilterX class="size-4" />Limpar</button>
+            <button type="button" class="btn" :disabled="loading" @click="load"><RefreshCw class="size-4" />Atualizar</button>
           </div>
         </div>
         <p v-if="summary" class="dashboard-caption">
@@ -153,27 +143,11 @@ const valueByUnit = computed(() =>
       <div v-else-if="!summary" class="contracts-state">Carregando indicadores…</div>
 
       <template v-else>
-        <section class="contract-kpis">
-          <div v-for="card in kpiCards" :key="card.label" class="contract-kpi dashboard-kpi" :class="card.tone">
-            <span>{{ card.label }}</span><strong>{{ formatNumber(card.value, 0) }}</strong><small>{{ card.sub }}</small>
-          </div>
+        <section class="metric-grid dashboard-metric-grid" aria-label="Indicadores do recorte atual">
+          <MetricCard v-for="card in kpiCards" :key="card.label" :label="card.label" :value="formatNumber(card.value, 0)" :detail="card.sub" :tone="card.tone" :icon="card.icon" :class="{ attention: card.icon === TriangleAlert }" />
         </section>
 
-        <section class="surface on-time-card">
-          <div class="on-time-head">
-            <div>
-              <strong :class="{ bad: (kpis?.onTimePercent ?? 0) < 80 }">{{ formatPercent(kpis?.onTimePercent ?? 0) }} em dia</strong>
-              <span>{{ kpis?.onTime }} de {{ kpis?.onTimeBase }} contratos ativos com data</span>
-            </div>
-            <small>Finalizados e sem data ficam fora do cálculo · {{ kpis?.semData }} sem data</small>
-          </div>
-          <div class="on-time-track">
-            <span v-for="part in onTimeParts" :key="part.label" :style="{ width: `${part.width}%`, background: part.color }" :title="`${part.label}: ${part.value}`">{{ part.width >= 8 ? part.value : "" }}</span>
-          </div>
-          <div class="on-time-legend">
-            <span v-for="part in onTimeParts" :key="part.label"><i :style="{ background: part.color }" />{{ part.label }}: {{ part.value }}</span>
-          </div>
-        </section>
+        <OnTimeChart :kpis="summary.kpis" />
 
         <div class="dashboard-grid">
           <DashboardCard title="Contratos por status" subtitle="Distribuição de todos os contratos do recorte." :icon="PieChart">
