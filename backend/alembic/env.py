@@ -5,11 +5,15 @@ Regras (ver backend/README.md):
   ALLOW_TEST_DB_MIGRATIONS=true;
 - o host/porta/usuário/banco (nunca a senha) são impressos antes de qualquer
   operação, para conferência manual;
-- qualquer indício de apontar para produção interrompe a migration.
+- qualquer indício de apontar para produção interrompe a migration;
+- APP_ENV=production é bloqueado por padrão e só é liberado com
+  ALLOW_PRODUCTION_MIGRATIONS=true explícito (ex.: Pre-deploy Command no
+  Railway). Nesse caminho nada da conexão é impresso.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -45,6 +49,15 @@ def _describe_url_without_secret(url: str) -> str:
 
 def _guard_migration_target() -> str:
     settings = get_settings()
+
+    if settings.app_env == "production":
+        if os.environ.get("ALLOW_PRODUCTION_MIGRATIONS", "").strip().lower() != "true":
+            raise SystemExit(
+                "Migrations bloqueadas: APP_ENV='production'. Defina "
+                "ALLOW_PRODUCTION_MIGRATIONS=true explicitamente para liberar."
+            )
+        print("[alembic] APP_ENV=production ALLOW_PRODUCTION_MIGRATIONS=true")
+        return settings.alembic_database_url
 
     if settings.app_env not in ("test", "development"):
         raise SystemExit(
