@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (Nuxt)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  backend:
+    name: Backend (FastAPI)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: contratos
+          POSTGRES_PASSWORD: contratos
+          POSTGRES_DB: gestao_contratos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contratos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://contratos:contratos@localhost:5432/gestao_contratos_test
+      MIGRATION_DATABASE_URL: postgresql://contratos:contratos@localhost:5432/gestao_contratos_test
+      ALLOW_TEST_DB_MIGRATIONS: "true"
+      CORS_ORIGINS: http://localhost:3000
+      DEV_AUTH_ENABLED: "true"
+      LOG_LEVEL: INFO
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - name: Criar .env.test
+        run: |
+          cat > .env.test <<EOF_ENV
+          APP_ENV=$APP_ENV
+          DATABASE_URL=$DATABASE_URL
+          MIGRATION_DATABASE_URL=$MIGRATION_DATABASE_URL
+          ALLOW_TEST_DB_MIGRATIONS=$ALLOW_TEST_DB_MIGRATIONS
+          CORS_ORIGINS=$CORS_ORIGINS
+          DEV_AUTH_ENABLED=$DEV_AUTH_ENABLED
+          LOG_LEVEL=$LOG_LEVEL
+          EOF_ENV
+      - run: python -m alembic upgrade head
+      - run: python -m ruff check app tests scripts
+      - run: python -m mypy app
+      - run: python -m pytest
