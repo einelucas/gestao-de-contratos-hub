@@ -17,7 +17,7 @@
 ## Checklist
 
 - [ ] Backend: `ruff check`, `mypy` e `pytest` passam
-- [ ] Frontend: `pnpm lint`, `pnpm typecheck`, `pnpm test` e `pnpm build` passam
+- [ ] Frontend: `npm run lint`, `npm run typecheck`, `npm run test` e `npm run build` passam
 - [ ] Imports e rotas removidas ou alteradas foram revisados
 - [ ] Migrations foram revisadas quando aplicável
 - [ ] Nenhum segredo ou dado sensível foi incluído

@@ -4,17 +4,17 @@
 
 ```bash
 cd frontend
-pnpm install
-pnpm dev
+npm ci
+npm run dev
 ```
 
 Validação:
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+npm run lint
+npm run typecheck
+npm run test
+npm run build
 ```
 
 ## Backend
