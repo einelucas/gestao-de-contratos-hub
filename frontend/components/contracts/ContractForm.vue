@@ -243,10 +243,11 @@ async function submit(): Promise<void> {
           </label>
           <label>
             <span>Setor</span>
-            <select v-model="form.sectorId" required>
+            <select v-if="editableSectors.length > 1" v-model="form.sectorId" required>
               <option value="" disabled>Selecione o setor</option>
               <option v-for="sector in editableSectors" :key="sector.id" :value="sector.id">{{ sector.name }}</option>
             </select>
+            <input v-else :value="editableSectors[0]?.name ?? ''" disabled />
           </label>
           <label class="span-2"><span>Fornecedor</span><input v-model="form.supplier" required maxlength="240" /></label>
           <label class="span-2"><span>Prestação / objeto</span><textarea v-model="form.serviceDescription" rows="2" /></label>

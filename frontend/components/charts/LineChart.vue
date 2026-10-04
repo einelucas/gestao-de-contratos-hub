@@ -4,6 +4,8 @@ import { formatNumber } from "~/utils/format";
 interface LinePoint {
   label: string;
   value: number | null;
+  /** Identificador estável do ponto (ex.: `AAAA-MM`), opcional — repassado em `select`. */
+  key?: string;
 }
 
 const props = withDefaults(
@@ -23,6 +25,7 @@ const props = withDefaults(
     showLegend: true,
   },
 );
+const emit = defineEmits<{ select: [point: LinePoint] }>();
 
 const hoveredIndex = ref<number | null>(null);
 const formatValue = (value: number) => formatNumber(value, props.suffix === "%" ? 1 : 2);
@@ -324,8 +327,10 @@ const tooltipStyle = computed(() => {
             :cy="y(point.value)"
             :fill="color"
             :r="hoveredIndex === index ? 7 : 6"
+            style="cursor: pointer"
             @mouseenter="hoveredIndex = index"
             @mouseleave="hoveredIndex = null"
+            @click="emit('select', point)"
           >
             <title>{{ point.label }}: {{ formatValue(point.value) }}{{ suffix }}</title>
           </circle>
@@ -350,8 +355,10 @@ const tooltipStyle = computed(() => {
           :width="plotWidth / Math.max(1, points.length)"
           :height="height"
           fill="transparent"
+          style="cursor: pointer"
           @mouseenter="hoveredIndex = index"
           @mouseleave="hoveredIndex = null"
+          @click="emit('select', point)"
         />
       </template>
     </svg>

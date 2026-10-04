@@ -8,13 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import CurrentUser, require_permission, require_user
 from app.core.database import get_session
 from app.core.permissions import Permission
-from app.modules.contracts import service, summary
+from app.modules.contracts import overdue_history, service, summary
 from app.modules.contracts.schemas import (
     ContractCreateIn,
     ContractListOut,
     ContractOut,
     ContractSummaryOut,
     ContractUpdateIn,
+    OverdueHistoryOut,
     ResponsibleListOut,
     SectorListOut,
     UserSectorPermissionsIn,
@@ -55,6 +56,15 @@ async def resumo_contratos(
     return await summary.build_summary(
         session, current_user, sector_id=sector_id, unit=unit, date_from=de, date_to=ate
     )
+
+
+# Registrada antes de /contratos/{contract_id} pelo mesmo motivo do /resumo.
+@router.get("/contratos/vencidos-historico", response_model=OverdueHistoryOut)
+async def historico_vencidos(
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> OverdueHistoryOut:
+    return await overdue_history.reconcile_and_get_history(session)
 
 
 @router.get("/contratos/{contract_id}", response_model=ContractOut)

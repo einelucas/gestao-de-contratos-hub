@@ -277,6 +277,17 @@ export interface ContractSummary {
   values: { hasValues: boolean; total: number; active: number; overdue: number; attention: number };
 }
 
+/** Histórico real (não projetado) de `GET /contratos/vencidos-historico`, org-wide. */
+export interface OverdueHistoryPoint {
+  date: string;
+  remaining: number;
+  resolved: number;
+}
+
+export interface OverdueHistory {
+  items: OverdueHistoryPoint[];
+}
+
 export interface EmailPreview {
   contractId: string;
   contractNumber: string;

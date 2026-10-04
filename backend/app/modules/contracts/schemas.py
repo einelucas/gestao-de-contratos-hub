@@ -152,6 +152,19 @@ class ContractSummaryOut(CamelModel):
     values: SummaryValuesOut
 
 
+class OverdueHistoryPointOut(CamelModel):
+    date: date
+    remaining: int
+    resolved: int
+
+
+class OverdueHistoryOut(CamelModel):
+    """Histórico real (não projetado) para o gráfico "Evolução da Regularização"
+    do Dashboard — org-wide, igual para todo mundo com acesso ao Hub."""
+
+    items: list[OverdueHistoryPointOut]
+
+
 class ResponsibleOut(CamelModel):
     id: str
     name: str

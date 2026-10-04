@@ -22,7 +22,7 @@ const route = useRoute(); const router = useRouter();
 const { count: attentionCount, load: loadAttention } = useAttention();
 const exportTrigger = useState<number>('contracts-export-trigger', () => 0);
 const { excel } = useExport();
-const selectedSector = ref(''); const supplier = ref('Todos'); const unit = ref('Todas'); const situation = ref('Todos'); const statusFilter = ref<StatusFilter>('Todos'); const sortMode = ref<SortMode>('Status e vencimento'); const viewMode = ref<'grid'|'list'>('grid'); const page = ref(1); const selected = ref<Contract|null>(null); const perPage = ref(20);
+const supplier = ref('Todos'); const unit = ref('Todas'); const situation = ref('Todos'); const statusFilter = ref<StatusFilter>('Todos'); const sortMode = ref<SortMode>('Status e vencimento'); const viewMode = ref<'grid'|'list'>('grid'); const page = ref(1); const selected = ref<Contract|null>(null); const perPage = ref(20);
 
 await bootstrap();
 
@@ -58,7 +58,6 @@ watch(exportTrigger, () => {
     Situacao: c.situation, Alerta: c.alert, Inicio: c.startDate, Fim: c.endDate, ValorTotal: Number(c.totalValue), Setor: c.sectorName,
   })));
 });
-watch(selectedSector, async (value) => { await loadContracts(value || undefined); page.value = 1; });
 const suppliers = computed(() => ['Todos', ...Array.from(new Set(contracts.value.map(c => c.supplier))).sort((a,b)=>a.localeCompare(b,'pt-BR'))]);
 const units = computed(() => ['Todas', ...Array.from(new Set(contracts.value.map(c => c.unit).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pt-BR'))]);
 const baseFiltered = computed(() => contracts.value.filter(c => { const q=globalSearch.value.trim().toLowerCase(); return (!q || c.supplier.toLowerCase().includes(q) || c.contractNumber.toLowerCase().startsWith(q)) && (supplier.value==='Todos'||c.supplier===supplier.value) && (unit.value==='Todas'||c.unit===unit.value) && (situation.value==='Todos'||c.situation===situation.value); }));
@@ -83,12 +82,11 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
 
       <section class="surface contracts-surface">
         <div class="contract-filter-bar">
-          <label><span>Setor</span><select v-model="selectedSector"><option value="">Todos os setores</option><option v-for="item in sectors" :key="item.id" :value="item.id">{{ item.name }} ({{ item.contractCount }})</option></select></label>
           <label><span>Fornecedor</span><select v-model="supplier"><option v-for="item in suppliers" :key="item">{{ item }}</option></select></label>
           <label><span>Unidade</span><select v-model="unit"><option v-for="item in units" :key="item">{{ item }}</option></select></label>
-          <label><span>Situação</span><select v-model="situation"><option>Todos</option><option>Vigente</option><option>Vencido</option><option>Finalizado</option><option>Sem data</option></select></label>
-          <label class="sort-field"><span>Ordenação</span><select v-model="sortMode"><option>Status e vencimento</option><option>Nome do fornecedor</option><option>Vencimento mais próximo</option></select></label>
-          <div class="filter-actions"><button v-if="canCreate" type="button" class="new-contract-button" @click="creating = true"><Plus class="size-4" />Novo contrato</button><button class="icon-control" :class="{ active: viewMode==='grid' }" @click="viewMode='grid'"><Grid2X2 class="size-4" /></button><button class="icon-control" :class="{ active: viewMode==='list' }" @click="viewMode='list'"><List class="size-4" /></button><button class="icon-control" title="Atualizar" @click="loadContracts(selectedSector || undefined); loadAttention()"><RefreshCw class="size-4" /></button><button class="icon-control notification-control" title="Notificações" @click="notificationTrigger++"><Bell class="size-4" /><span v-if="attentionCount">{{ attentionCount }}</span></button></div>
+          <label><span>Situação</span><select v-model="situation"><option>Todos</option><option>Vigente</option><option>Vencido</option><option>Finalizado</option></select></label>
+          <label class="sort-field"><span>Ordenação</span><select v-model="sortMode"><option>Status e vencimento</option><option>Vencimento mais próximo</option></select></label>
+          <div class="filter-actions"><button v-if="canCreate" type="button" class="new-contract-button" @click="creating = true"><Plus class="size-4" />Novo contrato</button><button class="icon-control" :class="{ active: viewMode==='grid' }" @click="viewMode='grid'"><Grid2X2 class="size-4" /></button><button class="icon-control" :class="{ active: viewMode==='list' }" @click="viewMode='list'"><List class="size-4" /></button><button class="icon-control" title="Atualizar" @click="loadContracts(); loadAttention()"><RefreshCw class="size-4" /></button><button class="icon-control notification-control" title="Notificações" @click="notificationTrigger++"><Bell class="size-4" /><span v-if="attentionCount">{{ attentionCount }}</span></button></div>
         </div>
         <div v-if="loading" class="contracts-state">Carregando contratos...</div>
         <div v-else-if="error" class="contracts-state error">{{ error }}</div>

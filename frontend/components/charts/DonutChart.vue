@@ -20,6 +20,7 @@ const props = withDefaults(
     showLegendValues: false,
   },
 );
+const emit = defineEmits<{ select: [item: DonutItem] }>();
 
 const hovered = ref<string | null>(null);
 const formatValue = (value: number) => formatNumber(value, props.suffix === "%" ? 1 : 2);
@@ -120,6 +121,7 @@ const ariaLabel = computed(() =>
           class="donut-segment"
           @mouseenter="hovered = segment.label"
           @mouseleave="hovered = null"
+          @click="emit('select', segment)"
         >
           <title>{{ segment.label }}: {{ formatValue(segment.value) }}{{ suffix }}</title>
         </circle>
@@ -169,6 +171,7 @@ const ariaLabel = computed(() =>
         }"
         @mouseenter="hovered = item.label"
         @mouseleave="hovered = null"
+        @click="emit('select', item)"
       >
         <span class="donut-legend-dot" :style="{ backgroundColor: item.color }" />
 
@@ -275,7 +278,7 @@ const ariaLabel = computed(() =>
   font: inherit;
   font-size: 12px;
 
-  cursor: default;
+  cursor: pointer;
 
   transition: opacity 0.15s ease;
 }

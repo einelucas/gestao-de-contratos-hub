@@ -4,6 +4,8 @@ interface BarPoint {
   value: number | null;
   /** Modo empilhado: valor de cada série (chave = `BarSeries.key`). */
   values?: Record<string, number>;
+  /** Identificador estável do ponto (ex.: `AAAA-MM`), opcional — repassado em `select`. */
+  key?: string;
 }
 
 interface BarSeries {
@@ -34,6 +36,7 @@ const props = withDefaults(
     series: undefined,
   },
 );
+const emit = defineEmits<{ select: [payload: { point: BarPoint; seriesKey?: string }] }>();
 
 const hoveredIndex = ref<number | null>(null);
 
@@ -337,6 +340,19 @@ function deactivate(index: number) {
               :class="{ 'chart-bar-track--active': hoveredIndex === index }"
             />
 
+            <!-- Área de hover ampliada (abaixo da barra, para não bloquear o clique no segmento) -->
+            <rect
+              :x="pad.left + index * slot"
+              :y="pad.top"
+              :width="slot"
+              :height="plotHeight + 38"
+              fill="transparent"
+              class="chart-hit-area"
+              @mouseenter="activate(index)"
+              @mouseleave="deactivate(index)"
+              @click="emit('select', { point })"
+            />
+
             <!-- Barra empilhada -->
             <g
               v-if="stacked"
@@ -352,6 +368,7 @@ function deactivate(index: number) {
               @mouseleave="deactivate(index)"
               @focus="activate(index)"
               @blur="deactivate(index)"
+              @click="emit('select', { point })"
             >
               <rect
                 v-for="segment in segments(point)"
@@ -362,6 +379,7 @@ function deactivate(index: number) {
                 :height="segment.height"
                 rx="3"
                 :fill="segment.color"
+                @click.stop="emit('select', { point, seriesKey: segment.key })"
               >
                 <title>{{ point.label }} · {{ segment.label }}: {{ formatValue(segment.value) }}{{ suffix }}</title>
               </rect>
@@ -389,6 +407,7 @@ function deactivate(index: number) {
               @mouseleave="deactivate(index)"
               @focus="activate(index)"
               @blur="deactivate(index)"
+              @click="emit('select', { point })"
             >
               <title>
                 {{ point.label }}: {{ formatValue(point.value ?? 0) }}{{ suffix }}
@@ -409,18 +428,6 @@ function deactivate(index: number) {
             >
               {{ formatValue(pointTotal(point) ?? 0) }}{{ suffix }}
             </text>
-
-            <!-- Área de hover ampliada -->
-            <rect
-              :x="pad.left + index * slot"
-              :y="pad.top"
-              :width="slot"
-              :height="plotHeight + 38"
-              fill="transparent"
-              class="chart-hit-area"
-              @mouseenter="activate(index)"
-              @mouseleave="deactivate(index)"
-            />
           </template>
 
           <!-- Rótulo X -->

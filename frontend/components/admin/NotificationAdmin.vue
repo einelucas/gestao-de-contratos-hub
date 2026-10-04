@@ -9,7 +9,7 @@ import type {
   NotificationType,
 } from "~/types/api";
 import { formatDate } from "~/utils/format";
-import { dateBr } from "~/utils/contracts";
+import { dateBr, daysToEndLabel } from "~/utils/contracts";
 import {
   ALERT_ACTION_LABEL,
   NOTIFICATION_STATUS_LABEL,
@@ -175,7 +175,7 @@ const summary = computed(() =>
                 <td><strong>{{ item.contractNumber }}</strong><small>{{ item.supplier }}</small></td>
                 <td>{{ milestoneLabel(item.type, item.noticeDays) }}<small v-if="item.retry">reenvio</small></td>
                 <td>{{ item.recipient || "—" }}</td>
-                <td>{{ dateBr(item.contractEndDate) }}<small>{{ item.daysToEnd >= 0 ? `faltam ${item.daysToEnd} d` : `${-item.daysToEnd} d vencido` }}</small></td>
+                <td>{{ dateBr(item.contractEndDate) }}<small>{{ daysToEndLabel(item.daysToEnd) }}</small></td>
                 <td><small>{{ item.error || item.reason }}</small></td>
                 <td><button type="button" class="btn small" @click="openEmail(item)"><Mail class="size-3.5" />Visualizar e-mail</button></td>
               </tr>

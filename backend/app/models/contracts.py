@@ -265,6 +265,53 @@ class ContractNotification(Base):
     )
 
 
+class OverdueContractTracking(Base):
+    """Uma linha por "ciclo de vencido" de um contrato, para medir regularização real.
+
+    Criada quando o contrato entra em `alert == "Vencido"`; `resolvedAt` é
+    preenchido quando ele deixa de estar vencido (finalizado, vigência
+    corrigida etc.). Se o mesmo contrato vencer de novo depois, abre uma nova
+    linha — o histórico de regularizações já contadas nunca é apagado nem
+    recuado, só a lista de quem está vencido agora muda.
+    """
+
+    __tablename__ = "OverdueContractTracking"
+
+    id: Mapped[str] = uuid_pk()
+    contractId: Mapped[str] = mapped_column(
+        String, ForeignKey("Contract.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    firstSeenOverdueAt: Mapped[date] = mapped_column(Date, nullable=False)
+    resolvedAt: Mapped[date | None] = mapped_column(Date, nullable=True)
+    createdAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow)
+    updatedAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        # A reconciliação (service) já garante no máximo um ciclo em aberto por
+        # contrato; o índice só acelera a busca das linhas ainda não resolvidas.
+        Index("OverdueContractTracking_contractId_idx", "contractId"),
+        Index("OverdueContractTracking_resolvedAt_idx", "resolvedAt"),
+    )
+
+
+class OverdueDailySnapshot(Base):
+    """Foto diária (org-wide) de quantos contratos estão vencidos e quantos já foram
+    regularizados desde que o acompanhamento começou — alimenta o gráfico de evolução
+    do Dashboard. Não é projeção: cada linha é o retrato real do dia em que foi gravada.
+    """
+
+    __tablename__ = "OverdueDailySnapshot"
+
+    id: Mapped[str] = uuid_pk()
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    remaining: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolvedCumulative: Mapped[int] = mapped_column(Integer, nullable=False)
+    createdAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow)
+    updatedAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (Index("OverdueDailySnapshot_date_key", "date", unique=True),)
+
+
 class UserSectorPermission(Base):
     """Acesso por setor para VIEWER/ANALYST (ADMIN consulta e edita todos).
 

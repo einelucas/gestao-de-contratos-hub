@@ -1,18 +1,27 @@
 <script setup lang="ts">
-import { BarChart3, CalendarClock, CalendarX, CheckCheck, CircleCheck, CircleDollarSign, FileText, FilterX, PieChart, RefreshCw, Timer, TrendingUp, TriangleAlert } from "lucide-vue-next";
-import type { ContractSummary, Sector } from "~/types/api";
-import { money } from "~/utils/contracts";
+import { BarChart3, CalendarClock, CalendarX, CheckCheck, CircleCheck, CircleDollarSign, FileText, FilterX, PieChart, RefreshCw, TriangleAlert } from "lucide-vue-next";
+import type { Contract, ContractAlert, ContractSummary, DeadlineBucket } from "~/types/api";
+import { money, statusLabel } from "~/utils/contracts";
+import {
+  applyDashboardBaseFilters,
+  filterByAlert,
+  filterByDeadlineBucket,
+  filterByMonth,
+  filterByUnit,
+  type MonthSegment,
+} from "~/utils/dashboardDrilldown";
 import { formatNumber, formatPercent } from "~/utils/format";
 
 definePageMeta({ middleware: "auth" });
 
 const api = useApi();
 const summary = ref<ContractSummary | null>(null);
-const sectors = ref<Sector[]>([]);
 const units = ref<string[]>([]);
 const loading = ref(false);
 const error = ref("");
-const filters = reactive({ de: "", ate: "", sectorId: "", unit: "" });
+const filters = reactive({ de: "", ate: "", unit: "" });
+/** Incrementado a cada `load()` bem-sucedido para o OverdueResolutionCurve recarregar junto. */
+const overdueHistoryReloadToken = ref(0);
 
 const STATUS_COLOR = {
   Regular: "#609346",
@@ -26,14 +35,20 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = "";
   try {
-    summary.value = await api.get<ContractSummary>("/contratos/resumo", {
-      de: filters.de || undefined,
-      ate: filters.ate || undefined,
-      sectorId: filters.sectorId || undefined,
-      unit: filters.unit || undefined,
-    });
+    const [summaryResponse] = await Promise.all([
+      api.get<ContractSummary>("/contratos/resumo", {
+        de: filters.de || undefined,
+        ate: filters.ate || undefined,
+        unit: filters.unit || undefined,
+      }),
+      // /contratos não é afetado pelos filtros do Dashboard — recarregado junto para manter
+      // o histórico real de vencidos (OverdueResolutionCurve) e o cache do drilldown em dia.
+      refreshContracts(),
+    ]);
+    summary.value = summaryResponse;
     // Opções de unidade vêm do recorte sem filtro de unidade, para a lista não encolher.
     if (!filters.unit) units.value = summary.value.byUnit.map((item) => item.key).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    overdueHistoryReloadToken.value++;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : "Não foi possível carregar o dashboard.";
   } finally {
@@ -42,15 +57,12 @@ async function load(): Promise<void> {
 }
 
 function clearFilters(): void {
-  Object.assign(filters, { de: "", ate: "", sectorId: "", unit: "" });
+  Object.assign(filters, { de: "", ate: "", unit: "" });
 }
 
-onMounted(async () => {
-  sectors.value = (await api.get<{ items: Sector[] }>("/setores").catch(() => ({ items: [] }))).items;
-});
 watch(filters, load, { deep: true, immediate: true });
 
-const hasFilters = computed(() => Boolean(filters.de || filters.ate || filters.sectorId || filters.unit));
+const hasFilters = computed(() => Boolean(filters.de || filters.ate || filters.unit));
 const kpis = computed(() => summary.value?.kpis);
 const percentOf = (key: string) => summary.value?.byStatus.find((item) => item.key === key)?.percent ?? 0;
 
@@ -69,7 +81,7 @@ const kpiCards = computed(() => {
 const statusDonut = computed(() =>
   (summary.value?.byStatus ?? [])
     .filter((item) => item.count > 0)
-    .map((item) => ({ label: item.label, value: item.count, color: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR] })),
+    .map((item) => ({ key: item.key, label: item.label, value: item.percent, color: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR] })),
 );
 
 const statusSeries = [
@@ -82,6 +94,7 @@ const statusSeries = [
 
 function groupPoints(groups: ContractSummary["byUnit"]) {
   return groups.slice(0, 12).map((group) => ({
+    key: group.key,
     label: group.label,
     value: group.total,
     values: {
@@ -104,19 +117,103 @@ const monthlySeries = [
 ];
 const monthlyPoints = computed(() =>
   (summary.value?.monthly ?? []).map((month) => ({
+    key: month.month,
     label: month.label,
     value: month.expiring + month.finalized,
     values: { upcoming: month.expiring - month.overdue, overdue: month.overdue, finalized: month.finalized },
   })),
 );
-const expiringLine = computed(() => (summary.value?.monthly ?? []).map((month) => ({ label: month.label, value: month.expiring })));
-
 const valueByUnit = computed(() =>
   (summary.value?.byUnit ?? [])
     .filter((group) => group.totalValue > 0)
     .slice(0, 12)
     .map((group) => ({ label: group.label, value: Math.round(group.totalValue / 1000) })),
 );
+
+// ------------------------------------------------------------- drilldown
+// Gráficos clicáveis: o popup reaproveita a mesma lista de /contratos (já
+// filtrada pelo acesso do usuário, e não afetada pelos filtros do Dashboard),
+// carregada junto com o resumo em `load()` e cacheada enquanto o Dashboard
+// está aberto.
+const allContracts = ref<Contract[]>([]);
+const contractsLoaded = ref(false);
+
+async function refreshContracts(): Promise<void> {
+  const response = await api.get<{ items: Contract[] }>("/contratos");
+  allContracts.value = response.items;
+  contractsLoaded.value = true;
+}
+
+async function ensureContracts(): Promise<void> {
+  if (contractsLoaded.value) return;
+  await refreshContracts();
+}
+
+const drilldown = reactive<{ open: boolean; title: string; contracts: Contract[] }>({
+  open: false,
+  title: "",
+  contracts: [],
+});
+const drilldownLoading = ref(false);
+
+async function openDrilldown(title: string, select: (base: Contract[]) => Contract[]): Promise<void> {
+  drilldown.title = title;
+  drilldown.open = true;
+  drilldown.contracts = [];
+  drilldownLoading.value = true;
+  try {
+    await ensureContracts();
+    const base = applyDashboardBaseFilters(allContracts.value, filters);
+    drilldown.contracts = select(base);
+  } finally {
+    drilldownLoading.value = false;
+  }
+}
+function closeDrilldown(): void {
+  drilldown.open = false;
+}
+
+const SERIES_ALERT: Record<string, ContractAlert> = {
+  regular: "Regular",
+  atencao: "Atencao",
+  vencido: "Vencido",
+  semData: "SemData",
+  finalizado: "Finalizado",
+};
+
+function onStatusSelect(item: { key?: string; label: string }): void {
+  const alert = item.key as ContractAlert | undefined;
+  if (!alert) return;
+  void openDrilldown(`Contratos ${statusLabel(alert).toLowerCase()}`, (base) => filterByAlert(base, alert));
+}
+
+function onDeadlineSelect(key: DeadlineBucket["key"]): void {
+  const label = summary.value?.deadlines.find((item) => item.key === key)?.label ?? "";
+  void openDrilldown(`Contratos — ${label}`, (base) => filterByDeadlineBucket(base, key));
+}
+
+function onUnitBarSelect(payload: { point: { label: string; key?: string }; seriesKey?: string }): void {
+  const unitKey = payload.point.key ?? payload.point.label;
+  const alert = payload.seriesKey ? SERIES_ALERT[payload.seriesKey] : undefined;
+  const title = alert
+    ? `Contratos da unidade ${payload.point.label} — ${statusLabel(alert)}`
+    : `Contratos da unidade ${payload.point.label}`;
+  void openDrilldown(title, (base) => filterByUnit(base, unitKey, alert));
+}
+
+function onMonthlyBarSelect(payload: { point: { label: string; key?: string }; seriesKey?: string }): void {
+  const month = payload.point.key;
+  if (!month) return;
+  const segment = payload.seriesKey as MonthSegment | undefined;
+  const title =
+    segment === "overdue"
+      ? `Contratos vencidos em ${payload.point.label}`
+      : segment === "finalized"
+        ? `Contratos finalizados em ${payload.point.label}`
+        : `Contratos com vencimento em ${payload.point.label}`;
+  void openDrilldown(title, (base) => filterByMonth(base, month, segment));
+}
+
 </script>
 
 <template>
@@ -126,7 +223,6 @@ const valueByUnit = computed(() =>
         <div class="contract-filter-bar dashboard-filter-bar">
           <label><span>Vencimento de</span><input v-model="filters.de" type="date" /></label>
           <label><span>Vencimento até</span><input v-model="filters.ate" type="date" /></label>
-          <label><span>Setor</span><select v-model="filters.sectorId"><option value="">Todos os setores</option><option v-for="item in sectors" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
           <label><span>Unidade</span><select v-model="filters.unit"><option value="">Todas</option><option v-for="item in units" :key="item" :value="item">{{ item }}</option></select></label>
           <div class="filter-actions">
             <button type="button" class="btn" :disabled="!hasFilters" @click="clearFilters"><FilterX class="size-4" />Limpar</button>
@@ -151,14 +247,14 @@ const valueByUnit = computed(() =>
 
         <div class="dashboard-grid">
           <DashboardCard title="Contratos por status" subtitle="Distribuição de todos os contratos do recorte." :icon="PieChart">
-            <DonutChart v-if="statusDonut.length" :items="statusDonut" suffix="" show-legend-values />
+            <DonutChart v-if="statusDonut.length" :items="statusDonut" show-legend-values @select="onStatusSelect" />
             <p v-else class="history-empty">Nenhum contrato no recorte.</p>
           </DashboardCard>
 
-          <DeadlineStatusCard :deadlines="summary.deadlines" />
+          <DeadlineStatusCard :deadlines="summary.deadlines" @select="onDeadlineSelect" />
 
           <DashboardCard title="Contratos por unidade" subtitle="Status empilhado por unidade." :icon="BarChart3" class="span-2">
-            <BarChart v-if="unitPoints.length" :points="unitPoints" :series="statusSeries" series-label="Total" />
+            <BarChart v-if="unitPoints.length" :points="unitPoints" :series="statusSeries" series-label="Total" @select="onUnitBarSelect" />
             <p v-else class="history-empty">Nenhum contrato no recorte.</p>
           </DashboardCard>
 
@@ -167,20 +263,10 @@ const valueByUnit = computed(() =>
           </DashboardCard>
 
           <DashboardCard title="Vencimentos por mês" subtitle="Contratos pelo mês do fim da vigência." :icon="CalendarClock" class="span-2">
-            <BarChart :points="monthlyPoints" :series="monthlySeries" series-label="Total" />
+            <BarChart :points="monthlyPoints" :series="monthlySeries" series-label="Total" @select="onMonthlyBarSelect" />
           </DashboardCard>
 
-          <DashboardCard title="Tendência de vencimentos" subtitle="Contratos em aberto que vencem em cada mês." :icon="TrendingUp">
-            <LineChart :points="expiringLine" series-label="Vencimentos" :show-legend="false" />
-          </DashboardCard>
-
-          <DashboardCard title="Atrasos" subtitle="Contratos vencidos e ainda em aberto." :icon="Timer">
-            <div class="stat-tiles">
-              <div><span>Vencidos em aberto</span><strong class="danger">{{ summary.overdue.count }}</strong></div>
-              <div><span>Média de atraso</span><strong>{{ formatNumber(summary.overdue.averageDays, 1) }} dias</strong></div>
-              <div><span>Maior atraso</span><strong>{{ summary.overdue.maxDays }} dias</strong></div>
-            </div>
-          </DashboardCard>
+          <OverdueResolutionCurve :reload-token="overdueHistoryReloadToken" />
 
           <DashboardCard v-if="summary.values.hasValues" title="Valores contratados" subtitle="Soma do valor total dos contratos do recorte." :icon="CircleDollarSign" class="span-2">
             <div class="stat-tiles four">
@@ -194,5 +280,12 @@ const valueByUnit = computed(() =>
         </div>
       </template>
     </div>
+    <DashboardContractsModal
+      :open="drilldown.open"
+      :title="drilldown.title"
+      :contracts="drilldown.contracts"
+      :loading="drilldownLoading"
+      @close="closeDrilldown"
+    />
   </ModuleWorkspace>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { BellOff, BellRing, Eye, Pencil, X } from "lucide-vue-next";
 import type { Contract, Sector } from "~/types/api";
-import { dateBr, money } from "~/utils/contracts";
+import { dateBr, daysToEndLabel, money } from "~/utils/contracts";
 import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
 
 const props = defineProps<{ contract: Contract | null; sectors: Sector[] }>();
@@ -37,7 +37,7 @@ function onSaved(updated: Contract): void {
               Criticidade {{ CRITICALITY_LABEL[contract.criticality] }}
             </span>
           </div>
-          <section><h3>Vigência</h3><div class="detail-grid"><div><span>Início</span><strong>{{ dateBr(contract.startDate) }}</strong></div><div><span>Fim</span><strong>{{ dateBr(contract.endDate) }}</strong></div><div><span>Dias para vencer</span><strong>{{ contract.daysToEnd ?? '—' }}</strong></div><div><span>Renovação automática</span><strong>{{ contract.autoRenewal ? 'Sim' : 'Não' }}</strong></div></div></section>
+          <section><h3>Vigência</h3><div class="detail-grid"><div><span>Início</span><strong>{{ dateBr(contract.startDate) }}</strong></div><div><span>Fim</span><strong>{{ dateBr(contract.endDate) }}</strong></div><div><span>Dias para vencer</span><strong>{{ daysToEndLabel(contract.daysToEnd) }}</strong></div><div><span>Renovação automática</span><strong>{{ contract.autoRenewal ? 'Sim' : 'Não' }}</strong></div></div></section>
           <section>
             <h3 class="with-icon">
               <component :is="contract.notify ? BellRing : BellOff" class="size-4" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FileText, LayoutDashboard, Send, ShieldCheck, Users } from "lucide-vue-next";
+import { FileText, LayoutDashboard, Send, Users } from "lucide-vue-next";
 import type { Permission } from "~/types/api";
 const route = useRoute();
 const { store } = useAuth();
@@ -9,10 +9,11 @@ const mainLinks: TabLink[] = [
   { to: '/dashboard/contratos', label: 'Contratos', icon: FileText },
 ];
 // Área administrativa (ADMIN). "Registro de Atividades" continua no cabeçalho.
+// "Permissões" fica fora do fluxo atual (homologação), mas a infraestrutura (rota, componente,
+// permissões de backend) continua pronta para reativação futura.
 const adminLinks: TabLink[] = [
   { to: '/dashboard/notificacoes', label: 'Envios', icon: Send, permission: 'alerts:manage' },
   { to: '/dashboard/equipes', label: 'Equipes', icon: Users, permission: 'teams:manage' },
-  { to: '/dashboard/permissoes', label: 'Permissões', icon: ShieldCheck, permission: 'users:manage' },
 ];
 const visibleAdmin = computed(() => adminLinks.filter(item => !item.permission || store.can(item.permission)));
 </script>
