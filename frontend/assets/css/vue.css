@@ -705,6 +705,8 @@ button:disabled {
 .contracts-result-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px 18px 5px;
   color: #718096;
@@ -718,6 +720,28 @@ button:disabled {
 }
 .contracts-result-head span {
   font-size: 11px;
+}
+.contracts-result-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.import-text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: #304f7e;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.import-text-action:hover,
+.import-text-action:focus-visible {
+  text-decoration: underline;
 }
 .contract-grid {
   display: grid;

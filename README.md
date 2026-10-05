@@ -354,7 +354,7 @@ Documentação complementar:
 
 ### Importação de contratos
 
-Em **Contratos → Importar contratos**, o ADMIN escolhe o setor, envia um CSV UTF-8 ou XLSX de até 5 MB e revisa o preview. O botão **Baixar modelo** fornece os cabeçalhos aceitos. Linhas vazias são ignoradas; qualquer erro de coluna, valor, data ou duplicidade impede a confirmação. A planilha é validada novamente na confirmação, que exige digitar `SUBSTITUIR`. O arquivo não fica armazenado no servidor.
+Em **Contratos → Importar**, o ADMIN escolhe o setor, envia um CSV UTF-8 ou XLSX de até 5 MB e revisa o preview. O botão **Baixar modelo** fornece os cabeçalhos aceitos. Linhas vazias são ignoradas; qualquer erro de coluna, valor, data ou duplicidade impede a confirmação. A planilha é validada novamente na confirmação, que exige digitar `SUBSTITUIR`. O arquivo não fica armazenado no servidor.
 
 A substituição remove apenas contratos do setor escolhido e insere a nova base no mesmo commit. Fornecedores existentes são reutilizados sem distinguir maiúsculas/minúsculas ou espaços repetidos. Os contratos importados ficam com `notify=false`; nenhum e-mail é enviado. O log de auditoria guarda apenas metadados e o hash SHA-256 do arquivo.
 
