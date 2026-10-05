@@ -35,6 +35,7 @@ O sistema centraliza a consulta e o acompanhamento dos contratos, oferece indica
 - visualização dos alertas e envios associados ao contrato;
 - API FastAPI para setores, fornecedores, contratos e notificações;
 - criação e edição de contratos conforme perfil/permissão;
+- importação CSV/XLSX por ADMIN com preview e substituição atômica por setor;
 - controle de acesso por setor;
 - migrations versionadas com Alembic;
 - seed idempotente a partir de `Relação Contratos.csv`;
@@ -350,6 +351,14 @@ As migrations existentes cobrem a base compartilhada do Hub, domínio de contrat
 Documentação complementar:
 
 `docs/banco-de-dados.md`
+
+### Importação de contratos
+
+Em **Contratos → Importar contratos**, o ADMIN escolhe o setor, envia um CSV UTF-8 ou XLSX de até 5 MB e revisa o preview. O botão **Baixar modelo** fornece os cabeçalhos aceitos. Linhas vazias são ignoradas; qualquer erro de coluna, valor, data ou duplicidade impede a confirmação. A planilha é validada novamente na confirmação, que exige digitar `SUBSTITUIR`. O arquivo não fica armazenado no servidor.
+
+A substituição remove apenas contratos do setor escolhido e insere a nova base no mesmo commit. Fornecedores existentes são reutilizados sem distinguir maiúsculas/minúsculas ou espaços repetidos. Os contratos importados ficam com `notify=false`; nenhum e-mail é enviado. O log de auditoria guarda apenas metadados e o hash SHA-256 do arquivo.
+
+O histórico de vencidos é corporativo. Quando o setor importado contém toda a base, a operação reinicia os snapshots e cria uma baseline da nova base no mesmo commit. Com contratos em outros setores e histórico corporativo já existente, o preview bloqueia a substituição para preservar esse histórico; é preciso decidir separadamente como migrar uma base parcial. Quando ainda não há histórico, a primeira baseline inclui todos os setores. Falha em qualquer etapa reverte contratos, fornecedores, histórico e auditoria da importação.
 
 ---
 

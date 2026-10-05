@@ -14,6 +14,7 @@ class Role(str, Enum):
 class Permission(str, Enum):
     CONTRACTS_VIEW = "contracts:view"
     CONTRACTS_MANAGE = "contracts:manage"
+    CONTRACTS_IMPORT = "contracts:import"
     USERS_MANAGE = "users:manage"
     AUDIT_READ = "audit:read"
     ALERTS_MANAGE = "alerts:manage"
@@ -26,6 +27,7 @@ _MATRIX: dict[Role, set[Permission]] = {
     Role.ADMIN: {
         Permission.CONTRACTS_VIEW,
         Permission.CONTRACTS_MANAGE,
+        Permission.CONTRACTS_IMPORT,
         Permission.USERS_MANAGE,
         Permission.AUDIT_READ,
         Permission.ALERTS_MANAGE,

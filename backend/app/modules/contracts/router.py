@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, require_permission, require_user
 from app.core.database import get_session
 from app.core.permissions import Permission
-from app.modules.contracts import overdue_history, service, summary
+from app.modules.contracts import import_service, overdue_history, service, summary
 from app.modules.contracts.schemas import (
     ContractCreateIn,
     ContractListOut,
@@ -65,6 +66,52 @@ async def historico_vencidos(
     current_user: CurrentUser = Depends(require_user),
 ) -> OverdueHistoryOut:
     return await overdue_history.reconcile_and_get_history(session)
+
+
+@router.get("/contratos/importacao/modelo")
+async def modelo_importacao(
+    current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_IMPORT)),
+) -> Response:
+    import csv
+    import io
+
+    output = io.StringIO()
+    csv.writer(output, delimiter=";").writerow(import_service.HEADERS)
+    return Response(
+        content="\ufeff" + output.getvalue(), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="modelo-importacao-contratos.csv"'},
+    )
+
+
+@router.post("/contratos/importacao/preview")
+async def preview_importacao(
+    sector_id: str = Form(alias="sectorId"),
+    file: UploadFile = File(),
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_IMPORT)),
+) -> dict:
+    parsed = await import_service.parse_upload(file)
+    return await import_service.preview(session, sector_id, parsed)
+
+
+@router.post("/contratos/importacao/confirmar")
+async def confirmar_importacao(
+    sector_id: str = Form(alias="sectorId"),
+    expected_sha256: str = Form(alias="expectedSha256"),
+    expected_fingerprint: str = Form(alias="expectedFingerprint"),
+    confirm_replace: bool = Form(alias="confirmReplace"),
+    file: UploadFile = File(),
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_IMPORT)),
+) -> dict:
+    from app.core.errors import DomainError
+
+    if not confirm_replace:
+        raise DomainError("Confirmação explícita obrigatória")
+    parsed = await import_service.parse_upload(file)
+    return await import_service.confirm(
+        session, current_user, sector_id, parsed, expected_sha256, expected_fingerprint
+    )
 
 
 @router.get("/contratos/{contract_id}", response_model=ContractOut)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, CalendarX, CheckCheck, CheckCircle2, CircleCheck, FileText, Grid2X2, List, Plus, RefreshCw, TriangleAlert } from "lucide-vue-next";
+import { Bell, CalendarX, CheckCheck, CheckCircle2, CircleCheck, FileText, Grid2X2, List, Plus, RefreshCw, TriangleAlert, Upload } from "lucide-vue-next";
 import type { Contract } from "~/types/api";
 import type { SortMode, StatusFilter } from "~/utils/contracts";
 import { sortContracts } from "~/utils/contracts";
@@ -8,7 +8,10 @@ definePageMeta({ middleware: "auth" });
 const { contracts, sectors, loading, error, sectorsError, lastUpdated, bootstrap, loadContracts, loadSectors } = useContracts();
 // "Novo contrato" só para quem edita ao menos um setor (ADMIN: todos; ANALYST: canEdit; VIEWER: nenhum).
 const canCreate = computed(() => sectors.value.some(sector => sector.canEdit));
+const auth = useAuthStore();
+const canImport = computed(() => auth.can('contracts:import'));
 const creating = ref(false);
+const importing = ref(false);
 const flash = ref('');
 let flashTimer: ReturnType<typeof setTimeout> | undefined;
 function showFlash(message: string): void {
@@ -52,6 +55,16 @@ function onContractUpdated(updated: Contract): void {
   selected.value = updated;
   void loadAttention();
 }
+function onImported(count: number): void {
+  selected.value = null;
+  globalSearch.value = '';
+  supplier.value = 'Todos'; unit.value = 'Todas'; situation.value = 'Todos'; statusFilter.value = 'Todos';
+  page.value = 1;
+  void loadContracts();
+  void loadSectors();
+  void loadAttention();
+  showFlash(`${count} contratos importados. A base do setor foi substituída.`);
+}
 watch(exportTrigger, () => {
   excel('gestao-contratos', filtered.value.map(c => ({
     Contrato: c.contractNumber, Fornecedor: c.supplier, Prestacao: c.serviceDescription, Unidade: c.unit,
@@ -86,7 +99,7 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
           <label><span>Unidade</span><select v-model="unit"><option v-for="item in units" :key="item">{{ item }}</option></select></label>
           <label><span>Situação</span><select v-model="situation"><option>Todos</option><option>Vigente</option><option>Vencido</option><option>Finalizado</option></select></label>
           <label class="sort-field"><span>Ordenação</span><select v-model="sortMode"><option>Status e vencimento</option><option>Vencimento mais próximo</option></select></label>
-          <div class="filter-actions"><button v-if="canCreate" type="button" class="new-contract-button" @click="creating = true"><Plus class="size-4" />Novo contrato</button><button class="icon-control" :class="{ active: viewMode==='grid' }" @click="viewMode='grid'"><Grid2X2 class="size-4" /></button><button class="icon-control" :class="{ active: viewMode==='list' }" @click="viewMode='list'"><List class="size-4" /></button><button class="icon-control" title="Atualizar" @click="loadContracts(); loadAttention()"><RefreshCw class="size-4" /></button><button class="icon-control notification-control" title="Notificações" @click="notificationTrigger++"><Bell class="size-4" /><span v-if="attentionCount">{{ attentionCount }}</span></button></div>
+          <div class="filter-actions"><button v-if="canCreate" type="button" class="new-contract-button" @click="creating = true"><Plus class="size-4" />Novo contrato</button><button v-if="canImport" type="button" class="new-contract-button" @click="importing = true"><Upload class="size-4" />Importar contratos</button><button class="icon-control" :class="{ active: viewMode==='grid' }" @click="viewMode='grid'"><Grid2X2 class="size-4" /></button><button class="icon-control" :class="{ active: viewMode==='list' }" @click="viewMode='list'"><List class="size-4" /></button><button class="icon-control" title="Atualizar" @click="loadContracts(); loadAttention()"><RefreshCw class="size-4" /></button><button class="icon-control notification-control" title="Notificações" @click="notificationTrigger++"><Bell class="size-4" /><span v-if="attentionCount">{{ attentionCount }}</span></button></div>
         </div>
         <div v-if="loading" class="contracts-state">Carregando contratos...</div>
         <div v-else-if="error" class="contracts-state error">{{ error }}</div>
@@ -102,5 +115,6 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
     </div>
     <ContractDetailsDrawer :contract="selected" :sectors="sectors" @close="closeDetails" @updated="onContractUpdated" />
     <ContractForm mode="create" :sectors="sectors" :open="creating" @close="creating = false" @saved="onContractCreated" />
+    <ContractImportModal :open="importing" :sectors="sectors" @close="importing = false" @imported="onImported" />
   </ModuleWorkspace>
 </template>
