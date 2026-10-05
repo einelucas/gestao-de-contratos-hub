@@ -1,5 +1,5 @@
 export type Role = "VIEWER" | "ANALYST" | "ADMIN";
-export type Permission = "contracts:view" | "contracts:manage" | "users:manage" | "audit:read" | "alerts:manage" | "teams:manage";
+export type Permission = "contracts:view" | "contracts:manage" | "contracts:import" | "users:manage" | "audit:read" | "alerts:manage" | "teams:manage";
 
 export interface CurrentUser {
   id: string;

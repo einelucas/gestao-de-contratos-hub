@@ -4,7 +4,7 @@ import type { CurrentUser, Permission, Role } from "~/types/api";
 const MATRIX: Record<Role, Permission[]> = {
   VIEWER: ["contracts:view"],
   ANALYST: ["contracts:view", "contracts:manage"],
-  ADMIN: ["contracts:view", "contracts:manage", "users:manage", "audit:read", "alerts:manage", "teams:manage"],
+  ADMIN: ["contracts:view", "contracts:manage", "contracts:import", "users:manage", "audit:read", "alerts:manage", "teams:manage"],
 };
 
 /** Modo de autenticação informado pelo backend (`GET /auth/provider`). */
