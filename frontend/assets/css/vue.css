@@ -1055,23 +1055,40 @@ button:disabled {
 }
 .notification-list button {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 5px 10px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-content: center;
+  gap: 4px 10px;
+  min-height: 88px;
   border: 0;
   border-bottom: 1px solid #eef2f6;
-  padding: 12px;
+  padding: 10px 12px;
   background: #fff;
   text-align: left;
 }
 .notification-list button:hover {
   background: #f8fafc;
 }
+.notification-list .notification-status {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+}
 .notification-list button strong {
+  grid-column: 2;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   color: #263950;
   font-size: 12px;
 }
-.notification-list button > span:last-child {
+.notification-list .notification-summary {
   grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #728096;
   font-size: 10.5px;
 }
@@ -1525,11 +1542,17 @@ button:disabled {
 }
 .notification-list .notification-mail {
   grid-column: 2;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #35618c;
   font-size: 10px;
+}
+.notification-list .notification-mail svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
 }
 .notification-list .notification-mail.muted {
   color: #98a2b3;
