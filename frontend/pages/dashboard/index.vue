@@ -66,8 +66,6 @@ function clearFilters(): void {
   Object.assign(filters, { de: "", ate: "", unit: "" });
 }
 
-watch(filters, load, { deep: true, immediate: true });
-
 const hasFilters = computed(() => Boolean(filters.de || filters.ate || filters.unit));
 const kpis = computed(() => summary.value?.kpis);
 const percentOf = (key: string) => summary.value?.byStatus.find((item) => item.key === key)?.percent ?? 0;
@@ -238,6 +236,10 @@ function onMonthlyBarSelect(payload: { point: { label: string; key?: string }; s
         : `Contratos com vencimento em ${payload.point.label}`;
   void openDrilldown(title, (base) => filterByMonth(base, month, segment));
 }
+
+// A execução imediata chama refreshContracts(), que usa contractsRequest e
+// contractsInFlight. Registre o watcher só depois de inicializar esses estados.
+watch(filters, load, { deep: true, immediate: true });
 
 </script>
 
