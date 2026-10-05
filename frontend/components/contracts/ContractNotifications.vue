@@ -38,9 +38,9 @@ watch(
         <p v-if="error" class="notification-empty error">{{ error }}</p>
         <div v-else class="notification-list">
           <button v-for="item in data?.items ?? []" :key="item.contractId" type="button" @click="emit('select', item.contractId)">
-            <ContractStatusBadge :alert="item.alert" />
+            <ContractStatusBadge :alert="item.alert" class="notification-status" />
             <strong>{{ item.supplier }}</strong>
-            <span>Contrato {{ item.contractNumber }} · {{ item.message }}</span>
+            <span class="notification-summary">Contrato {{ item.contractNumber }} · {{ item.message }}</span>
             <span v-if="item.lastNotification" class="notification-mail">
               <Mail class="size-3" />
               {{ NOTIFICATION_TYPE_LABEL[item.lastNotification.type] }} ·
