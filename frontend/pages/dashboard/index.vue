@@ -11,6 +11,7 @@ import {
   type MonthSegment,
 } from "~/utils/dashboardDrilldown";
 import { formatNumber, formatPercent } from "~/utils/format";
+import { createLatestRequest } from "~/utils/latestRequest";
 
 definePageMeta({ middleware: "auth" });
 
@@ -31,28 +32,33 @@ const STATUS_COLOR = {
   SemData: "#007cc5",
 } as const;
 
+// Filtros trocados rápido disparam várias cargas: só a mais recente pode mexer na tela.
+const summaryRequest = createLatestRequest();
+
 async function load(): Promise<void> {
+  const request = summaryRequest.begin();
+  const unitFilter = filters.unit;
   loading.value = true;
   error.value = "";
+  // /contratos não é afetado pelos filtros do Dashboard e só alimenta o drilldown: carrega em
+  // paralelo e com erro próprio, para uma falha ali não derrubar o resumo.
+  void refreshContracts();
   try {
-    const [summaryResponse] = await Promise.all([
-      api.get<ContractSummary>("/contratos/resumo", {
-        de: filters.de || undefined,
-        ate: filters.ate || undefined,
-        unit: filters.unit || undefined,
-      }),
-      // /contratos não é afetado pelos filtros do Dashboard — recarregado junto para manter
-      // o histórico real de vencidos (OverdueResolutionCurve) e o cache do drilldown em dia.
-      refreshContracts(),
-    ]);
+    const summaryResponse = await api.request<ContractSummary>("/contratos/resumo", {
+      method: "GET",
+      query: { de: filters.de || undefined, ate: filters.ate || undefined, unit: unitFilter || undefined },
+      signal: request.signal,
+    });
+    if (!request.isCurrent()) return;
     summary.value = summaryResponse;
     // Opções de unidade vêm do recorte sem filtro de unidade, para a lista não encolher.
-    if (!filters.unit) units.value = summary.value.byUnit.map((item) => item.key).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    if (!unitFilter) units.value = summaryResponse.byUnit.map((item) => item.key).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
     overdueHistoryReloadToken.value++;
   } catch (cause) {
+    if (!request.isCurrent()) return;
     error.value = cause instanceof Error ? cause.message : "Não foi possível carregar o dashboard.";
   } finally {
-    loading.value = false;
+    if (request.isCurrent()) loading.value = false;
   }
 }
 
@@ -137,16 +143,34 @@ const valueByUnit = computed(() =>
 // está aberto.
 const allContracts = ref<Contract[]>([]);
 const contractsLoaded = ref(false);
+const contractsError = ref("");
+const contractsRequest = createLatestRequest();
+let contractsInFlight: Promise<void> | null = null;
 
-async function refreshContracts(): Promise<void> {
-  const response = await api.get<{ items: Contract[] }>("/contratos");
-  allContracts.value = response.items;
-  contractsLoaded.value = true;
+/** Nunca rejeita: o erro fica em `contractsError` (mostrado no popup do drilldown). */
+function refreshContracts(): Promise<void> {
+  const request = contractsRequest.begin();
+  const run = (async () => {
+    try {
+      const response = await api.request<{ items: Contract[] }>("/contratos", { method: "GET", signal: request.signal });
+      if (!request.isCurrent()) return;
+      allContracts.value = response.items;
+      contractsLoaded.value = true;
+      contractsError.value = "";
+    } catch (cause) {
+      if (!request.isCurrent()) return;
+      contractsError.value = cause instanceof Error ? cause.message : "Não foi possível carregar os contratos.";
+    } finally {
+      if (request.isCurrent()) contractsInFlight = null;
+    }
+  })();
+  contractsInFlight = run;
+  return run;
 }
 
 async function ensureContracts(): Promise<void> {
-  if (contractsLoaded.value) return;
-  await refreshContracts();
+  if (contractsInFlight) await contractsInFlight;
+  if (!contractsLoaded.value) await refreshContracts();
 }
 
 const drilldown = reactive<{ open: boolean; title: string; contracts: Contract[] }>({
@@ -163,6 +187,7 @@ async function openDrilldown(title: string, select: (base: Contract[]) => Contra
   drilldownLoading.value = true;
   try {
     await ensureContracts();
+    if (!contractsLoaded.value) return;
     const base = applyDashboardBaseFilters(allContracts.value, filters);
     drilldown.contracts = select(base);
   } finally {
@@ -285,6 +310,7 @@ function onMonthlyBarSelect(payload: { point: { label: string; key?: string }; s
       :title="drilldown.title"
       :contracts="drilldown.contracts"
       :loading="drilldownLoading"
+      :error="contractsLoaded ? '' : contractsError"
       @close="closeDrilldown"
     />
   </ModuleWorkspace>

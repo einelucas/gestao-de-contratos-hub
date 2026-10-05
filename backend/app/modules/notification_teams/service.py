@@ -63,7 +63,8 @@ def _team_query() -> Select[tuple[NotificationTeam]]:
 
 
 async def load_team(session: AsyncSession, team_id: str) -> NotificationTeam:
-    team = (await session.execute(_team_query().where(NotificationTeam.id == team_id))).scalar_one_or_none()
+    stmt = _team_query().where(NotificationTeam.id == team_id).execution_options(populate_existing=True)
+    team = (await session.execute(stmt)).scalar_one_or_none()
     if team is None:
         raise NotFoundError("Equipe de notificação não encontrada")
     return team
@@ -177,8 +178,9 @@ async def create_team(
         entity_id=team.id,
         new_data={**_team_snapshot(team), "members": _members_snapshot(team)},
     )
+    saved_id = team.id
     await session.commit()
-    return await get_team(session, team.id, admin)
+    return await get_team(session, saved_id, admin)
 
 
 async def update_team(
@@ -186,7 +188,7 @@ async def update_team(
 ) -> NotificationTeamOut:
     team = await load_team(session, team_id)
     before = _team_snapshot(team)
-    changes = body.model_dump(exclude_unset=True)
+    changes = body.model_dump(exclude_unset=True, exclude={"members"})
 
     if "sector_id" in changes and changes["sector_id"] != team.sectorId:
         await _active_sector(session, changes["sector_id"])
@@ -224,34 +226,51 @@ async def update_team(
             previous_data=before,
             new_data=after,
         )
+    if body.members is not None:
+        await _apply_members(session, team, body.members, admin)
+    saved_id = team.id
     await session.commit()
-    session.expire_all()
-    return await get_team(session, team.id, admin)
+    return await get_team(session, saved_id, admin)
 
 
-async def replace_members(
-    session: AsyncSession, team_id: str, members: list[TeamMemberIn], admin: CurrentUser
-) -> NotificationTeamOut:
-    """Salva a lista completa: atualiza por id, cria os novos e remove os ausentes.
+async def _apply_members(
+    session: AsyncSession, team: NotificationTeam, members: list[TeamMemberIn], admin: CurrentUser
+) -> None:
+    """Substitui a lista de membros (sem commit): atualiza por id, cria os novos e remove os ausentes.
 
     Remover um membro não mexe no histórico (ContractNotification guarda o e-mail).
     """
-    team = await load_team(session, team_id)
     before = _members_snapshot(team)
     existing = {member.id: member for member in team.members}
     unknown = [member.id for member in members if member.id and member.id not in existing]
     if unknown:
         raise DomainError("Membro não pertence a esta equipe")
 
-    keep: list[NotificationTeamMember] = []
+    # Sem `id`, mas com e-mail já cadastrado na equipe: é o mesmo membro (evita apagar e
+    # recriar a linha, que esbarraria no índice único teamId+email).
+    by_email = {member.email: member for member in team.members}
+    plan: list[tuple[NotificationTeamMember | None, TeamMemberIn]] = []
+    reused: set[str] = set()
     for item in members:
-        if item.id:
-            member = existing[item.id]
-            member.name, member.email, member.active = item.name, item.email, item.active
-            member.updatedAt = utcnow()
+        match = existing[item.id] if item.id else by_email.get(item.email)
+        if match is not None and match.id in reused:
+            match = None
+        if match is not None:
+            reused.add(match.id)
+        plan.append((match, item))
+
+    # Remove primeiro quem saiu da lista, para o e-mail dele poder ser reaproveitado no mesmo save.
+    team.members = [member for member in team.members if member.id in reused]
+    await session.flush()
+
+    keep: list[NotificationTeamMember] = []
+    for match, item in plan:
+        if match is not None:
+            match.name, match.email, match.active = item.name, item.email, item.active
+            match.updatedAt = utcnow()
+            keep.append(match)
         else:
-            member = NotificationTeamMember(name=item.name, email=item.email, active=item.active)
-        keep.append(member)
+            keep.append(NotificationTeamMember(name=item.name, email=item.email, active=item.active))
     team.members = keep
     team.updatedAt = utcnow()
     await session.flush()
@@ -272,6 +291,13 @@ async def replace_members(
             "removed": sorted(before_emails - after_emails),
         },
     )
+
+
+async def replace_members(
+    session: AsyncSession, team_id: str, members: list[TeamMemberIn], admin: CurrentUser
+) -> NotificationTeamOut:
+    team = await load_team(session, team_id)
+    await _apply_members(session, team, members, admin)
+    saved_id = team.id
     await session.commit()
-    session.expire_all()
-    return await get_team(session, team.id, admin)
+    return await get_team(session, saved_id, admin)

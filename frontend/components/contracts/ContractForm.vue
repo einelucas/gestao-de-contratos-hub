@@ -8,7 +8,7 @@ import type {
   NotificationTeam,
   Sector,
 } from "~/types/api";
-import { money } from "~/utils/contracts";
+import { contractTeamProblem, money, type TeamsLoadStatus } from "~/utils/contracts";
 import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
 
 /**
@@ -29,7 +29,10 @@ const saving = ref(false);
 const error = ref("");
 const notice = ref("");
 const teamsBySector = ref<Record<string, NotificationTeam[]>>({});
-const loadingTeams = ref(false);
+// Status separado da lista: "erro ao consultar" não pode virar "setor sem equipes".
+const teamsStatus = ref<Record<string, TeamsLoadStatus>>({});
+const loadingTeams = computed(() => teamsStatus.value[form.sectorId] === "loading");
+const teamsError = computed(() => teamsStatus.value[form.sectorId] === "error");
 
 interface FormState {
   contractNumber: string;
@@ -87,16 +90,18 @@ const title = computed(() =>
   props.mode === "create" ? "Novo contrato" : `Editar contrato ${props.contract?.contractNumber ?? ""}`,
 );
 
-async function loadTeams(sectorId: string): Promise<void> {
-  if (!sectorId || teamsBySector.value[sectorId]) return;
-  loadingTeams.value = true;
+async function loadTeams(sectorId: string, { force = false } = {}): Promise<void> {
+  if (!sectorId) return;
+  const status = teamsStatus.value[sectorId];
+  if (status === "loading" || (status === "loaded" && !force)) return;
+  teamsStatus.value = { ...teamsStatus.value, [sectorId]: "loading" };
   try {
     const response = await api.get<{ items: NotificationTeam[] }>("/equipes-notificacao", { setorId: sectorId });
     teamsBySector.value = { ...teamsBySector.value, [sectorId]: response.items };
+    teamsStatus.value = { ...teamsStatus.value, [sectorId]: "loaded" };
   } catch {
-    teamsBySector.value = { ...teamsBySector.value, [sectorId]: [] };
-  } finally {
-    loadingTeams.value = false;
+    // Não zera a lista: a equipe atual continua valendo até o servidor dizer o contrário.
+    teamsStatus.value = { ...teamsStatus.value, [sectorId]: "error" };
   }
 }
 
@@ -110,6 +115,7 @@ watch(
     error.value = "";
     notice.value = "";
     teamsBySector.value = {};
+    teamsStatus.value = {};
     void loadTeams(form.sectorId);
   },
   { immediate: true },
@@ -120,6 +126,8 @@ watch(
   () => form.sectorId,
   async (sectorId, previous) => {
     await loadTeams(sectorId);
+    // Só invalida com a lista do novo setor de fato carregada; em erro, o backend decide ao salvar.
+    if (teamsStatus.value[sectorId] !== "loaded") return;
     if (previous !== undefined && sectorId !== previous && form.notificationTeamId) {
       const stillValid = (teamsBySector.value[sectorId] ?? []).some((team) => team.id === form.notificationTeamId);
       if (!stillValid) {
@@ -157,12 +165,14 @@ function validate(): string {
     return "O fim da vigência não pode ser anterior ao início.";
   if ([form.serviceValue, form.ownMaterialValue, form.thirdPartyMaterialValue].some((value) => Number(value) < 0))
     return "Valores não podem ser negativos.";
-  if (form.notificationTeamId && !selectedTeam.value && !loadingTeams.value)
-    return "A equipe selecionada não pertence ao setor do contrato.";
-  if (form.notify) {
-    if (!form.notificationTeamId) return "Para ativar os alertas, selecione a equipe de notificação do setor.";
-    if (teamWarning.value) return `${teamWarning.value} Ajuste a equipe antes de ativar os alertas.`;
-  }
+  const teamProblem = contractTeamProblem({
+    teamId: form.notificationTeamId,
+    notify: form.notify,
+    teamsStatus: teamsStatus.value[form.sectorId],
+    teamFound: Boolean(selectedTeam.value),
+    teamWarning: teamWarning.value,
+  });
+  if (teamProblem) return teamProblem;
   return "";
 }
 
@@ -289,13 +299,20 @@ async function submit(): Promise<void> {
             <span>Equipe de notificação</span>
             <select v-model="form.notificationTeamId" :disabled="!form.sectorId || loadingTeams">
               <option value="">{{ !form.sectorId ? "Selecione o setor primeiro" : "Nenhuma equipe" }}</option>
+              <option v-if="form.notificationTeamId && !selectedTeam && !loadingTeams" :value="form.notificationTeamId">
+                {{ teamsError ? "Equipe atual (lista indisponível)" : "Equipe atual" }}
+              </option>
               <option v-for="team in sectorTeams" :key="team.id" :value="team.id" :disabled="!team.active && team.id !== initial.notificationTeamId">
                 {{ team.name }} · {{ team.activeMemberCount }} destinatário(s){{ team.active ? "" : " · desativada" }}
               </option>
             </select>
           </label>
         </div>
-        <p v-if="form.sectorId && !loadingTeams && !sectorTeams.length" class="form-hint">
+        <p v-if="teamsError" class="form-hint warning-text">
+          <AlertTriangle class="size-3.5" />Não foi possível consultar as equipes deste setor. A equipe atual foi mantida.
+          <button type="button" class="link-button" @click="loadTeams(form.sectorId, { force: true })">Tentar novamente</button>
+        </p>
+        <p v-else-if="form.sectorId && teamsStatus[form.sectorId] === 'loaded' && !sectorTeams.length" class="form-hint">
           <AlertTriangle class="size-3.5" />Este setor ainda não tem equipe de notificação. Um administrador pode cadastrá-la em “Equipes”.
         </p>
         <p v-if="notice" class="form-hint warning-text"><AlertTriangle class="size-3.5" />{{ notice }}</p>
@@ -322,3 +339,17 @@ async function submit(): Promise<void> {
     </template>
   </AppModal>
 </template>
+
+<style scoped>
+.link-button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+</style>

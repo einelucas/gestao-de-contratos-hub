@@ -36,3 +36,27 @@ export function sortContracts(items: Contract[], mode: SortMode): Contract[] {
     return rank[a.alert] - rank[b.alert] || da - db || a.supplier.localeCompare(b.supplier, "pt-BR");
   });
 }
+
+/** Situação da consulta de equipes de um setor no formulário de contrato. */
+export type TeamsLoadStatus = "loading" | "loaded" | "error";
+
+/**
+ * Validação de equipe no formulário. Só acusa "equipe de outro setor" quando a
+ * lista do setor foi CARREGADA e a equipe não está nela — se a consulta falhou
+ * ou ainda está em andamento, não bloqueia: o backend valida ao salvar.
+ */
+export function contractTeamProblem(input: {
+  teamId: string;
+  notify: boolean;
+  teamsStatus: TeamsLoadStatus | undefined;
+  teamFound: boolean;
+  teamWarning: string;
+}): string {
+  const loaded = input.teamsStatus === "loaded";
+  if (input.teamId && loaded && !input.teamFound) return "A equipe selecionada não pertence ao setor do contrato.";
+  if (input.notify) {
+    if (!input.teamId) return "Para ativar os alertas, selecione a equipe de notificação do setor.";
+    if (input.teamWarning) return `${input.teamWarning} Ajuste a equipe antes de ativar os alertas.`;
+  }
+  return "";
+}

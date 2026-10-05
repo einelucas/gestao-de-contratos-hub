@@ -177,14 +177,24 @@ async def test_contract_team_must_match_sector_and_have_recipients(client, auth_
 
     no_members = await client.post(
         "/api/v1/contratos",
-        json={**base, "contractNumber": "3", "notify": True, "notificationTeamId": empty_team["id"]},
+        json={
+            **base,
+            "contractNumber": "3",
+            "notify": True,
+            "notificationTeamId": empty_team["id"],
+        },
         headers=auth_header("ADMIN"),
     )
     assert no_members.status_code == 422
 
     ok = await client.post(
         "/api/v1/contratos",
-        json={**base, "contractNumber": "4", "notify": True, "notificationTeamId": obras_team["id"]},
+        json={
+            **base,
+            "contractNumber": "4",
+            "notify": True,
+            "notificationTeamId": obras_team["id"],
+        },
         headers=auth_header("ADMIN"),
     )
     assert ok.status_code == 201
@@ -232,7 +242,10 @@ async def test_sector_change_invalidates_team(client, auth_header, db_session) -
         headers=auth_header("ADMIN"),
     )
     assert moved.status_code == 200
-    assert (moved.json()["sectorId"], moved.json()["notificationTeamName"]) == (sectors["ti"], "Equipe TI")
+    assert (moved.json()["sectorId"], moved.json()["notificationTeamName"]) == (
+        sectors["ti"],
+        "Equipe TI",
+    )
 
     # Equipe vinculada a contrato não muda de setor.
     blocked = await client.patch(
@@ -260,3 +273,43 @@ async def test_disabling_alerts_clears_enabled_date(client, auth_header, db_sess
     assert on.json()["notifyEnabledOn"] == contracts_today().isoformat()
     off = await client.patch(url, json={"notify": False}, headers=auth_header("ADMIN"))
     assert off.json()["notifyEnabledOn"] is None
+
+
+async def test_patch_team_with_members_is_atomic(client, auth_header, db_session) -> None:
+    """Equipe + membros no mesmo PATCH: ou salva tudo, ou nada (sem salvamento parcial)."""
+    sectors = await _sectors(db_session)
+    team = (await _create(client, auth_header, sectors["obras"])).json()
+    url = f"{URL}/{team['id']}"
+
+    saved = await client.patch(
+        url,
+        json={
+            "name": "Equipe Renomeada",
+            "members": [{"email": "novo@empresa.com", "name": "Novo"}],
+        },
+        headers=auth_header("ADMIN"),
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["name"] == "Equipe Renomeada"
+    assert [m["email"] for m in saved.json()["members"]] == ["novo@empresa.com"]
+
+    # Membro inválido (id de outra equipe): nada é gravado, nem o nome.
+    failed = await client.patch(
+        url,
+        json={
+            "name": "Nome Que Não Pode Ficar",
+            "members": [{"id": "inexistente", "email": "x@empresa.com"}],
+        },
+        headers=auth_header("ADMIN"),
+    )
+    assert 400 <= failed.status_code < 500
+    current = (await client.get(url, headers=auth_header("ADMIN"))).json()
+    assert current["name"] == "Equipe Renomeada"
+    assert [m["email"] for m in current["members"]] == ["novo@empresa.com"]
+
+    duplicated = await client.patch(
+        url,
+        json={"members": [{"email": "a@empresa.com"}, {"email": "A@empresa.com"}]},
+        headers=auth_header("ADMIN"),
+    )
+    assert duplicated.status_code == 422

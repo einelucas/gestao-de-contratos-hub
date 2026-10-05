@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createLatestRequest } from "~/utils/latestRequest";
 import { Eye, Mail, Play, RefreshCw, RotateCw } from "lucide-vue-next";
 import type {
   AlertItem,
@@ -39,26 +40,36 @@ const filters = reactive<{ status: NotificationStatus | ""; tipo: NotificationTy
 });
 const resending = ref<string | null>(null);
 
+// Filtros/paginação trocados rápido: a lista mostrada é sempre a da última consulta.
+const listRequest = createLatestRequest();
+
 async function load(): Promise<void> {
+  const request = listRequest.begin();
   loading.value = true;
   error.value = "";
   try {
-    const response = await api.get<ContractNotificationList>("/notificacoes-contratos", {
-      page: page.value,
-      pageSize: 25,
-      status: filters.status || undefined,
-      tipo: filters.tipo || undefined,
-      destinatario: filters.destinatario.trim() || undefined,
-      de: filters.de || undefined,
-      ate: filters.ate || undefined,
+    const response = await api.request<ContractNotificationList>("/notificacoes-contratos", {
+      method: "GET",
+      query: {
+        page: page.value,
+        pageSize: 25,
+        status: filters.status || undefined,
+        tipo: filters.tipo || undefined,
+        destinatario: filters.destinatario.trim() || undefined,
+        de: filters.de || undefined,
+        ate: filters.ate || undefined,
+      },
+      signal: request.signal,
     });
+    if (!request.isCurrent()) return;
     items.value = response.items;
     totalPages.value = response.pagination?.totalPages ?? 1;
     total.value = response.pagination?.total ?? response.items.length;
   } catch (cause) {
+    if (!request.isCurrent()) return;
     error.value = cause instanceof Error ? cause.message : "Não foi possível carregar os envios.";
   } finally {
-    loading.value = false;
+    if (request.isCurrent()) loading.value = false;
   }
 }
 

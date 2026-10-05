@@ -5,7 +5,7 @@ import type { SortMode, StatusFilter } from "~/utils/contracts";
 import { sortContracts } from "~/utils/contracts";
 definePageMeta({ middleware: "auth" });
 
-const { contracts, sectors, loading, error, lastUpdated, bootstrap, loadContracts, loadSectors } = useContracts();
+const { contracts, sectors, loading, error, sectorsError, lastUpdated, bootstrap, loadContracts, loadSectors } = useContracts();
 // "Novo contrato" só para quem edita ao menos um setor (ADMIN: todos; ANALYST: canEdit; VIEWER: nenhum).
 const canCreate = computed(() => sectors.value.some(sector => sector.canEdit));
 const creating = ref(false);
@@ -91,6 +91,7 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
         <div v-if="loading" class="contracts-state">Carregando contratos...</div>
         <div v-else-if="error" class="contracts-state error">{{ error }}</div>
         <template v-else>
+          <p v-if="sectorsError" class="contracts-state error" role="alert">Setores indisponíveis no momento ({{ sectorsError }}). <button type="button" class="icon-control" title="Tentar novamente" @click="loadSectors()"><RefreshCw class="size-4" /></button></p>
           <p v-if="flash" class="flash-success" role="status"><CheckCircle2 class="size-4" />{{ flash }}</p>
           <div class="contracts-result-head"><p><strong>{{ filtered.length }}</strong> contratos encontrados</p><span v-if="lastUpdated">Atualizado às {{ lastUpdated.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }}</span></div>
           <div v-if="pageItems.length" :class="viewMode==='grid' ? 'contract-grid' : 'contract-list'"><ContractCard v-for="item in pageItems" :key="item.id" :contract="item" :list="viewMode==='list'" @select="selected=$event" /></div>

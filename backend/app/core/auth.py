@@ -15,6 +15,7 @@ import httpx
 from fastapi import Depends, Request
 from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -148,6 +149,25 @@ async def verify_access_token(token: str, settings: Settings) -> AuthenticatedId
     )
 
 
+async def _insert_or_get_user(session: AsyncSession, user: User, provider: str, external_id: str) -> User:
+    """Provisionamento JIT idempotente: o primeiro acesso costuma disparar várias requisições
+    em paralelo (Dashboard), e todas tentariam criar o mesmo usuário. O INSERT roda num
+    SAVEPOINT; se outra requisição criou antes, relê a linha dela em vez de falhar."""
+    try:
+        async with session.begin_nested():
+            session.add(user)
+    except IntegrityError:
+        existing = (
+            await session.execute(
+                select(User).where(User.authProvider == provider, User.externalUserId == external_id)
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise
+        return existing
+    return user
+
+
 async def resolve_local_user(
     session: AsyncSession, identity: AuthenticatedIdentity, settings: Settings
 ) -> User:
@@ -173,9 +193,7 @@ async def resolve_local_user(
         authProvider=KEYCLOAK_AUTH_PROVIDER,
         externalUserId=identity.subject,
     )
-    session.add(user)
-    await session.flush()
-    return user
+    return await _insert_or_get_user(session, user, KEYCLOAK_AUTH_PROVIDER, identity.subject)
 
 
 async def _resolve_dev_user(session: AsyncSession, role: Role, settings: Settings) -> User:
@@ -198,9 +216,7 @@ async def _resolve_dev_user(session: AsyncSession, role: Role, settings: Setting
         authProvider=DEV_AUTH_PROVIDER,
         externalUserId=external_id,
     )
-    session.add(user)
-    await session.flush()
-    return user
+    return await _insert_or_get_user(session, user, DEV_AUTH_PROVIDER, external_id)
 
 
 def _extract_bearer_token(request: Request) -> str | None:

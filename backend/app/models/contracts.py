@@ -18,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -287,10 +288,15 @@ class OverdueContractTracking(Base):
     updatedAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow, onupdate=utcnow)
 
     __table_args__ = (
-        # A reconciliação (service) já garante no máximo um ciclo em aberto por
-        # contrato; o índice só acelera a busca das linhas ainda não resolvidas.
         Index("OverdueContractTracking_contractId_idx", "contractId"),
         Index("OverdueContractTracking_resolvedAt_idx", "resolvedAt"),
+        # No máximo um ciclo em aberto por contrato, garantido pelo banco (migração 0007).
+        Index(
+            "OverdueContractTracking_open_contractId_key",
+            "contractId",
+            unique=True,
+            postgresql_where=text('"resolvedAt" IS NULL'),
+        ),
     )
 
 

@@ -11,13 +11,21 @@ vencidos agora com os ciclos em aberto gravados da última vez. Quem saiu da
 lista virou "regularizado" (contador acumulado, nunca diminui); quem é novo
 só abre um ciclo. Não há job nem projeção — cada ponto do histórico é o
 retrato real do dia em que foi gravado.
+
+Concorrência: o GET grava no banco, então duas abas/usuários podem reconciliar
+ao mesmo tempo. A reconciliação inteira roda sob um advisory lock de transação
+(serializa quem chega junto) e o banco reforça os invariantes: snapshot único
+por data (upsert) e no máximo um ciclo em aberto por contrato (índice parcial,
+migração 0007).
 """
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.common import utcnow
 from app.models.contracts import Contract, OverdueContractTracking, OverdueDailySnapshot
 from app.modules.contracts.rules import contracts_today, derive_alert, derive_situation
 from app.modules.contracts.schemas import OverdueHistoryOut, OverdueHistoryPointOut
@@ -34,7 +42,14 @@ async def _current_overdue_contract_ids(session: AsyncSession) -> set[str]:
     return overdue
 
 
+# Chave arbitrária e fixa do advisory lock da reconciliação (só precisa ser única no app).
+_RECONCILE_LOCK_KEY = 0x0D0E_4157
+
+
 async def reconcile_and_get_history(session: AsyncSession) -> OverdueHistoryOut:
+    # Liberado automaticamente no commit/rollback; a segunda requisição espera e,
+    # ao entrar, já enxerga o que a primeira gravou (reconciliação idempotente).
+    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _RECONCILE_LOCK_KEY})
     today = contracts_today()
     overdue_ids = await _current_overdue_contract_ids(session)
 
@@ -67,18 +82,19 @@ async def reconcile_and_get_history(session: AsyncSession) -> OverdueHistoryOut:
         )
     ).scalar_one()
 
-    snapshot = (
-        await session.execute(select(OverdueDailySnapshot).where(OverdueDailySnapshot.date == today))
-    ).scalar_one_or_none()
-    if snapshot is None:
-        session.add(
-            OverdueDailySnapshot(
-                date=today, remaining=len(overdue_ids), resolvedCumulative=resolved_cumulative
-            )
+    upsert = insert(OverdueDailySnapshot).values(
+        date=today, remaining=len(overdue_ids), resolvedCumulative=resolved_cumulative
+    )
+    await session.execute(
+        upsert.on_conflict_do_update(
+            index_elements=[OverdueDailySnapshot.date],
+            set_={
+                "remaining": upsert.excluded.remaining,
+                "resolvedCumulative": upsert.excluded.resolvedCumulative,
+                "updatedAt": utcnow(),
+            },
         )
-    else:
-        snapshot.remaining = len(overdue_ids)
-        snapshot.resolvedCumulative = resolved_cumulative
+    )
 
     await session.commit()
 

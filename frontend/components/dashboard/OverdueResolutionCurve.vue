@@ -9,7 +9,14 @@ import { formatNumber } from "~/utils/format";
  * acesso ao Hub), não de projeção nem de armazenamento local do navegador.
  * O backend reconcilia a cada chamada: quem saiu da lista de vencidos vira
  * "regularizado" (acumulado, nunca diminui); quem é novo só conta como
- * "restante". `reloadToken` é incrementado pela página sempre que o
+ * "restante". O acumulado conta REGULARIZAÇÕES (ciclos resolvidos): um
+ * contrato que vence, é regularizado e vence de novo conta duas vezes — por
+ * isso a tela fala em "regularizações", não em "contratos regularizados".
+ * Não há percentual de progresso: novos vencidos entram na série depois, então
+ * resolvidos / (restantes + resolvidos) não mede avanço sobre uma base fixa.
+ * É um indicador corporativo (todas as unidades): não responde aos filtros do
+ * Dashboard, porque não existe histórico por unidade/período para recortar.
+ * `reloadToken` é incrementado pela página sempre que o
  * Dashboard é carregado/atualizado, para a curva acompanhar o resto da tela.
  */
 const props = defineProps<{ reloadToken: number }>();
@@ -19,16 +26,20 @@ const points = ref<OverdueHistoryPoint[]>([]);
 const loading = ref(false);
 const error = ref("");
 
+let loadSeq = 0;
 async function load(): Promise<void> {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = "";
   try {
     const response = await api.get<{ items: OverdueHistoryPoint[] }>("/contratos/vencidos-historico");
+    if (seq !== loadSeq) return;
     points.value = response.items;
   } catch (cause) {
+    if (seq !== loadSeq) return;
     error.value = cause instanceof Error ? cause.message : "Não foi possível carregar o histórico.";
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -93,11 +104,12 @@ const resolvedPath = computed(() => buildSmoothPath(resolvedCoords.value));
 
 const hoveredIndex = ref<number | null>(null);
 const hoveredPoint = computed(() => (hoveredIndex.value === null ? null : (points.value[hoveredIndex.value] ?? null)));
-const hoveredProgress = computed(() => {
-  const point = hoveredPoint.value;
-  if (!point) return 0;
-  const total = point.remaining + point.resolved;
-  return total ? Math.round((point.resolved / total) * 100) : 0;
+// Regularizações registradas entre o ponto anterior e o ponto em foco.
+const hoveredResolvedDelta = computed(() => {
+  if (hoveredIndex.value === null || hoveredIndex.value === 0) return null;
+  const point = points.value[hoveredIndex.value];
+  const previous = points.value[hoveredIndex.value - 1];
+  return point && previous ? point.resolved - previous.resolved : null;
 });
 
 const tooltipStyle = computed(() => {
@@ -115,18 +127,18 @@ const tooltipStyle = computed(() => {
 <template>
   <DashboardCard
     title="Evolução da Regularização dos Contratos Vencidos"
-    subtitle="Histórico real, registrado no servidor a cada atualização do Dashboard — não é uma projeção."
+    subtitle="Indicador corporativo — todas as unidades. Não responde aos filtros acima. Histórico real, registrado no servidor a cada atualização do Dashboard."
     :icon="TrendingDown"
     class="span-2"
   >
     <div v-if="error" class="contracts-state error">{{ error }}</div>
     <div v-else-if="loading && !points.length" class="history-empty">Carregando histórico…</div>
-    <div v-else-if="!points.length" class="history-empty">Nenhum contrato vencido no recorte atual.</div>
+    <div v-else-if="!points.length" class="history-empty">Nenhum histórico de contratos vencidos registrado ainda.</div>
     <div v-else class="overdue-curve">
       <div class="curve-summary">
-        <div><span>Vencidos agora</span><strong class="danger">{{ formatNumber(latest?.remaining ?? 0, 0) }}</strong></div>
+        <div><span>Vencidos agora (todas as unidades)</span><strong class="danger">{{ formatNumber(latest?.remaining ?? 0, 0) }}</strong></div>
         <i aria-hidden="true" />
-        <div><span>Regularizados (desde o início do acompanhamento)</span><strong class="success">{{ formatNumber(latest?.resolved ?? 0, 0) }}</strong></div>
+        <div><span>Regularizações (desde o início do acompanhamento)</span><strong class="success">{{ formatNumber(latest?.resolved ?? 0, 0) }}</strong></div>
         <i aria-hidden="true" />
         <div><span>Acompanhando desde</span><strong>{{ first ? formatDateLabel(first.date) : "—" }}</strong></div>
         <span class="real-data-badge">Dados reais</span>
@@ -141,7 +153,7 @@ const tooltipStyle = computed(() => {
           class="chart-svg"
           :viewBox="`0 0 ${width} ${height}`"
           role="img"
-          aria-label="Histórico real de contratos vencidos restantes e regularizados"
+          aria-label="Histórico real de contratos vencidos restantes e regularizações acumuladas, todas as unidades"
           preserveAspectRatio="xMidYMid meet"
         >
           <g v-for="tick in yTicks" :key="tick.value">
@@ -185,14 +197,14 @@ const tooltipStyle = computed(() => {
         <div v-if="hoveredPoint" class="chart-tooltip" :style="tooltipStyle">
           <div class="chart-tooltip-title">{{ formatDateLabel(hoveredPoint.date) }}</div>
           <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-remaining-dot" /><span>Restantes: <strong>{{ formatNumber(hoveredPoint.remaining, 0) }}</strong></span></div>
-          <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-resolved-dot" /><span>Regularizados: <strong>{{ formatNumber(hoveredPoint.resolved, 0) }}</strong></span></div>
-          <div class="chart-tooltip-row"><span>Progresso: <strong>{{ hoveredProgress }}%</strong></span></div>
+          <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-resolved-dot" /><span>Regularizações (acumulado): <strong>{{ formatNumber(hoveredPoint.resolved, 0) }}</strong></span></div>
+          <div v-if="hoveredResolvedDelta !== null" class="chart-tooltip-row"><span>Desde o registro anterior: <strong>+{{ formatNumber(hoveredResolvedDelta, 0) }}</strong></span></div>
         </div>
       </div>
 
       <div class="chart-legend">
         <span class="chart-legend-item"><span class="chart-legend-square curve-remaining-dot" />Vencidos restantes</span>
-        <span class="chart-legend-item"><span class="chart-legend-square curve-resolved-dot" />Regularizados (acumulado)</span>
+        <span class="chart-legend-item"><span class="chart-legend-square curve-resolved-dot" />Regularizações (acumulado)</span>
       </div>
     </div>
   </DashboardCard>

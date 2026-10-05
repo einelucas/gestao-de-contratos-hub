@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createLatestRequest } from "~/utils/latestRequest";
 import { Info, Mail } from "lucide-vue-next";
 import type { EmailPreview, NotificationType } from "~/types/api";
 
@@ -56,25 +57,36 @@ function initialKey(): string {
   return props.type ?? "A45";
 }
 
+// Abrir o modal e trocar o marco disparam cargas seguidas: só a última pode virar o preview.
+const previewRequest = createLatestRequest();
+
 async function load(): Promise<void> {
   if (!props.contractId) return;
+  const request = previewRequest.begin();
   loading.value = true;
   error.value = "";
   try {
-    preview.value = await api.get<EmailPreview>("/alertas/modelo", {
-      contrato: props.contractId,
-      tipo: milestone.value.type,
-      dias: milestone.value.days,
-      data: props.day || undefined,
+    const response = await api.request<EmailPreview>("/alertas/modelo", {
+      method: "GET",
+      query: {
+        contrato: props.contractId,
+        tipo: milestone.value.type,
+        dias: milestone.value.days,
+        data: props.day || undefined,
+      },
+      signal: request.signal,
     });
+    if (!request.isCurrent()) return;
+    preview.value = response;
   } catch (cause) {
+    if (!request.isCurrent()) return;
     preview.value = null;
     error.value =
       cause instanceof Error
         ? cause.message
         : "Não foi possível montar o modelo do e-mail.";
   } finally {
-    loading.value = false;
+    if (request.isCurrent()) loading.value = false;
   }
 }
 

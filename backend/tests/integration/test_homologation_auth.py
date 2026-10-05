@@ -193,9 +193,11 @@ async def test_secure_cookie_is_emitted(client) -> None:
 
 
 def test_incomplete_or_insecure_configuration_is_rejected() -> None:
+    # _env_file=None: o teste valida só o que recebe; sem isso o backend/.env local (que pode
+    # usar AUTH_PROVIDER=homologation com as contas preenchidas) completaria a configuração.
     base = {"DATABASE_URL": "postgresql://x/y_test", "AUTH_PROVIDER": "homologation"}
     with pytest.raises(ValidationError) as missing:
-        Settings(**base)
+        Settings(_env_file=None, **base)
     assert "HOMOLOGATION_VIEWER_PASSWORD_HASH" in str(missing.value)
 
     complete = {
@@ -205,16 +207,16 @@ def test_incomplete_or_insecure_configuration_is_rejected() -> None:
         "HOMOLOGATION_ADMIN_USERNAME": "administrador",
         "HOMOLOGATION_ADMIN_PASSWORD_HASH": ADMIN_HASH,
     }
-    assert Settings(**complete).auth_provider == "homologation"
+    assert Settings(_env_file=None, **complete).auth_provider == "homologation"
     with pytest.raises(ValidationError, match="Argon2"):
-        Settings(**{**complete, "HOMOLOGATION_ADMIN_PASSWORD_HASH": "senha-em-texto"})
+        Settings(_env_file=None, **{**complete, "HOMOLOGATION_ADMIN_PASSWORD_HASH": "senha-em-texto"})
     with pytest.raises(ValidationError, match="diferentes"):
-        Settings(**{**complete, "HOMOLOGATION_ADMIN_USERNAME": "Visualizador"})
+        Settings(_env_file=None, **{**complete, "HOMOLOGATION_ADMIN_USERNAME": "Visualizador"})
     with pytest.raises(ValidationError, match="AUTH_COOKIE_SECURE"):
-        Settings(**{**complete, "APP_ENV": "production", "AUTH_COOKIE_SECURE": False})
+        Settings(_env_file=None, **{**complete, "APP_ENV": "production", "AUTH_COOKIE_SECURE": False})
     # Nenhum erro ecoa a senha/hash.
     with pytest.raises(ValidationError) as exc:
-        Settings(**{**complete, "HOMOLOGATION_ADMIN_PASSWORD_HASH": "segredo-em-texto"})
+        Settings(_env_file=None, **{**complete, "HOMOLOGATION_ADMIN_PASSWORD_HASH": "segredo-em-texto"})
     assert "segredo-em-texto" not in str(exc.value)
 
 

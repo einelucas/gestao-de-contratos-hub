@@ -170,10 +170,9 @@ async function save(): Promise<void> {
       if (value.name.trim() !== before.name) teamChanges.name = value.name.trim();
       if (value.sectorId !== before.sectorId) teamChanges.sectorId = value.sectorId;
       if (value.active !== before.active) teamChanges.active = value.active;
+      // Equipe + membros numa única requisição/transação: ou salva tudo, ou nada.
+      if (JSON.stringify(value.members) !== JSON.stringify(before.members)) teamChanges.members = membersPayload(value);
       if (Object.keys(teamChanges).length) await api.patch(`/equipes-notificacao/${value.id}`, teamChanges);
-      if (JSON.stringify(value.members) !== JSON.stringify(before.members)) {
-        await api.put(`/equipes-notificacao/${value.id}/membros`, { members: membersPayload(value) });
-      }
       saved = { id: value.id } as NotificationTeam;
     }
     await load(saved.id);

@@ -334,10 +334,12 @@ async def test_retry_success_clears_error(db_session) -> None:
     contract_id = await _contract(db_session, base, "100", TODAY + timedelta(days=20))
     await _run(adapter=FakeAdapter(fail_always=True))
 
-    # Dia seguinte: a antecedência não é mais elegível, mas o retry ainda ocorre.
+    # Dia seguinte: o marco de 20 dias ainda está na janela de recuperação (conta como
+    # elegível), mas já foi processado — só o retry envia, uma única vez.
     healthy = FakeAdapter()
     result = await _run(today=TODAY + timedelta(days=1), adapter=healthy)
-    assert (result.eligible, result.retried, result.sent) == (0, 1, 1)
+    assert (result.eligible, result.retried, result.sent) == (1, 1, 1)
+    assert len(healthy.sent) == 1
     assert healthy.sent[0].days_to_end == 19
 
     [row] = await _rows(contract_id)
@@ -419,7 +421,7 @@ async def test_dry_run_has_no_side_effects(db_session) -> None:
     assert would_send.recipient == "resp100@empresa.com"
     assert would_send.contract_end_date == TODAY + timedelta(days=20)
     assert would_send.days_to_end == 20
-    assert "antecedência" in would_send.reason
+    assert would_send.reason == "Marco de 20 dias antes do vencimento"
     assert by_contract[("200", False)].action == "already_notified"
     assert by_contract[("200", True)].action == "would_retry"
 

@@ -90,6 +90,9 @@ class NotificationTeamUpdateIn(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
     sector_id: str | None = None
     active: bool | None = None
+    # Opcional: lista completa de membros, salva na MESMA transação dos dados da equipe
+    # (evita salvamento parcial equipe-ok/membros-falhou).
+    members: list[TeamMemberIn] | None = None
 
     @field_validator("name")
     @classmethod
@@ -106,6 +109,8 @@ class NotificationTeamUpdateIn(CamelModel):
         for name in ("name", "sector_id", "active"):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"'{name}' não pode ser nulo")
+        if self.members is not None:
+            _unique_emails(self.members)
         return self
 
 

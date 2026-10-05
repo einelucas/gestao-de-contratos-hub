@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.core.permissions import ForbiddenError
 
@@ -88,6 +89,19 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"error": "Dados inválidos", "issues": _safe_issues(exc.errors())},
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def _integrity(request: Request, exc: IntegrityError) -> JSONResponse:
+        # Restrição do banco violada (ex.: duas requisições criando o mesmo registro ao mesmo
+        # tempo). Previsível e sem efeito parcial — a sessão da requisição faz rollback.
+        correlation_id = getattr(request.state, "correlation_id", None)
+        logger.warning(
+            "Violação de integridade", extra={"correlation_id": correlation_id, "path": request.url.path}
+        )
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"error": "Conflito com dados existentes. Atualize a página e tente novamente."},
         )
 
     @app.exception_handler(Exception)

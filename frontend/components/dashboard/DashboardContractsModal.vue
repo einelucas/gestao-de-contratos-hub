@@ -6,11 +6,12 @@ import { dateBr, daysToEndLabel } from "~/utils/contracts";
  * Popup de drilldown dos gráficos do Dashboard — mostra exatamente os contratos
  * que compõem o dado clicado (status, unidade, faixa de prazo ou mês).
  */
-const props = defineProps<{
+defineProps<{
   open: boolean;
   title: string;
   contracts: Contract[];
   loading?: boolean;
+  error?: string;
 }>();
 const emit = defineEmits<{ close: [] }>();
 </script>
@@ -23,6 +24,7 @@ const emit = defineEmits<{ close: [] }>();
         <template v-else>{{ contracts.length }} contrato{{ contracts.length === 1 ? "" : "s" }}</template>
       </p>
       <div v-if="loading" class="history-empty">Carregando contratos…</div>
+      <div v-else-if="error" class="contracts-state error">{{ error }}</div>
       <div v-else-if="!contracts.length" class="history-empty">Nenhum contrato encontrado.</div>
       <div v-else class="table-scroll drilldown-table-scroll">
         <table class="admin-table">

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from datetime import date
-from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +13,7 @@ from app.core.permissions import Permission
 from app.models.contracts import ContractNotificationStatus, ContractNotificationType
 from app.modules.contract_alerts import service
 from app.modules.contract_alerts.adapter import NotificationAdapter, get_notification_adapter
+from app.modules.contract_alerts.eligibility import ADVANCE_MILESTONES
 from app.modules.contract_alerts.schemas import (
     AlertRunOut,
     AttentionListOut,
@@ -94,11 +94,14 @@ async def list_contratos_em_atencao(
 async def modelo_email(
     contrato: str = Query(...),
     tipo: ContractNotificationType = Query(default=ContractNotificationType.ANTECEDENCIA),
-    dias: Literal[45, 20, 1] | None = Query(default=None, description="Marco de antecedência (45, 20 ou 1)"),
+    # `int` + checagem manual: `Literal[45, 20, 1]` em query string rejeita "45" (texto) com 422.
+    dias: int | None = Query(default=None, description="Marco de antecedência (45, 20 ou 1)"),
     data: date | None = Query(default=None, description="Dia simulado (opcional)"),
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(require_user),
 ) -> EmailPreviewOut:
+    if dias is not None and dias not in ADVANCE_MILESTONES:
+        raise DomainError("Marco de antecedência inválido: use 45, 20 ou 1")
     return await service.email_preview(
         session, current_user, contract_id=contrato, alert_type=tipo, notice_days=dias, day=data
     )

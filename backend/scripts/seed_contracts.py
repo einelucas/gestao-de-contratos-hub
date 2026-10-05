@@ -80,7 +80,8 @@ async def seed() -> None:
                 number = (row.get("Contrato") or "").strip()
                 if not number:
                     continue
-                supplier = await get_or_create_supplier(session, row.get("Fornecedor") or "Fornecedor não informado")
+                supplier_name = row.get("Fornecedor") or "Fornecedor não informado"
+                supplier = await get_or_create_supplier(session, supplier_name)
                 result = await session.execute(
                     select(Contract).where(Contract.sectorId == sector.id, Contract.contractNumber == number)
                 )

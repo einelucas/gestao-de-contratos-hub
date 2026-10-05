@@ -85,7 +85,10 @@ def _contract_query() -> Select[tuple[Contract]]:
 
 
 async def _load_contract(session: AsyncSession, contract_id: str) -> Contract:
-    item = (await session.execute(_contract_query().where(Contract.id == contract_id))).scalar_one_or_none()
+    # populate_existing: relê colunas e relacionamentos mesmo se o objeto já estiver na sessão
+    # (ex.: logo após um update), sem precisar expirar a sessão.
+    stmt = _contract_query().where(Contract.id == contract_id).execution_options(populate_existing=True)
+    item = (await session.execute(stmt)).scalar_one_or_none()
     if item is None:
         raise NotFoundError("Contrato não encontrado")
     return item
@@ -272,8 +275,9 @@ async def create_contract(
             "notificationTeamId": item.notificationTeamId,
         },
     )
+    item_id = item.id
     await session.commit()
-    return await get_contract(session, item.id, current_user)
+    return await get_contract(session, item_id, current_user)
 
 
 _UPDATE_MAPPING = {
@@ -345,12 +349,15 @@ async def update_contract(
         entity="Contract",
         entity_id=item.id,
         previous_data=before,
-        new_data={key: _json_safe(value) for key, value in body.model_dump(exclude_unset=True).items()},
+        # Chaves em camelCase, como em previous_data (`_snapshot`) e no restante da auditoria.
+        new_data={
+            key: _json_safe(value)
+            for key, value in body.model_dump(exclude_unset=True, by_alias=True).items()
+        },
     )
+    item_id = item.id
     await session.commit()
-    # O objeto em memória pode estar com relacionamentos desatualizados (ex.: responsável trocado).
-    session.expire_all()
-    return await get_contract(session, item.id, current_user)
+    return await get_contract(session, item_id, current_user)
 
 
 async def get_user_sector_permissions(session: AsyncSession, user_id: str) -> UserSectorPermissionsOut:
