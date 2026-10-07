@@ -8,6 +8,7 @@ const props = defineProps<{ deadlines: DeadlineBucket[] }>();
 const emit = defineEmits<{ select: [key: DeadlineBucket["key"]] }>();
 
 const TONE: Record<DeadlineBucket["key"], "critical" | "warning" | "safe" | "muted"> = {
+  regularization: "muted",
   overdue: "critical",
   today: "critical",
   next7: "warning",
@@ -29,7 +30,7 @@ const max = computed(() => Math.max(1, ...props.deadlines.map((item) => item.cou
 </script>
 
 <template>
-  <DashboardCard title="Situação de prazos" subtitle="Contratos não finalizados por faixa de vencimento." :icon="Clock">
+  <DashboardCard title="Situação de prazos" subtitle="Vencimentos pendentes e contratos em regularização." :icon="Clock">
     <div class="deadlines">
       <div class="deadlines-summary">
         <div><strong>{{ formatNumber(total, 0) }}</strong><span>contratos em aberto</span></div>

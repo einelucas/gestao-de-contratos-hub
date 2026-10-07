@@ -1,6 +1,6 @@
 import type { Contract, ContractAlert } from "~/types/api";
 
-export type StatusFilter = "Todos" | "Vencido" | "Atencao" | "Regular" | "Finalizado";
+export type StatusFilter = "Todos" | "Regularizacao" | "Vencido" | "Atencao" | "Regular" | "Finalizado";
 export type SortMode = "Status e vencimento" | "Vencimento mais próximo";
 
 export function money(value: string | number): string {
@@ -14,7 +14,7 @@ export function dateBr(value: string | null): string {
 }
 
 export function statusLabel(alert: ContractAlert): string {
-  return alert === "Atencao" ? "Atenção" : alert === "SemData" ? "Sem data" : alert;
+  return alert === "Regularizacao" ? "Em regularização" : alert === "Atencao" ? "Atenção" : alert === "SemData" ? "Sem data" : alert;
 }
 
 /** Mesma redação do sino (`attention_message` no backend) — nunca mostra "0 dias"/"faltam 0 d". */
@@ -27,7 +27,7 @@ export function daysToEndLabel(days: number | null): string {
   return `Vencido há ${-days} dias`;
 }
 
-const rank: Record<ContractAlert, number> = { Vencido: 1, Atencao: 2, SemData: 3, Regular: 4, Finalizado: 5 };
+const rank: Record<ContractAlert, number> = { Regularizacao: 2, Vencido: 1, Atencao: 2, SemData: 3, Regular: 4, Finalizado: 5 };
 export function sortContracts(items: Contract[], mode: SortMode): Contract[] {
   return [...items].sort((a, b) => {
     const da = a.endDate ? new Date(`${a.endDate}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;

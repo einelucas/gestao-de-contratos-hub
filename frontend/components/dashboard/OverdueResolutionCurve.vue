@@ -126,7 +126,7 @@ const tooltipStyle = computed(() => {
 
 <template>
   <DashboardCard
-    title="Evolução da Regularização dos Contratos Vencidos"
+    title="Histórico de vigência dos Contratos Vencidos"
     subtitle="Indicador corporativo — todas as unidades. Não responde aos filtros acima. Histórico real, registrado no servidor a cada atualização do Dashboard."
     :icon="TrendingDown"
     class="span-2"

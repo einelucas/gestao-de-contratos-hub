@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import CurrentUser
 from app.core.errors import ConflictError, DomainError, NotFoundError
+from app.models.common import utcnow
 from app.models.contracts import Contract, NotificationTeam, Sector, Supplier, UserSectorPermission
 from app.models.user import User
 from app.modules.contracts.access import (
@@ -25,6 +26,7 @@ from app.modules.contracts.schemas import (
     ContractCreateIn,
     ContractOut,
     ContractUpdateIn,
+    RegularizationStage,
     ResponsibleOut,
     SectorOut,
     UserSectorPermissionOut,
@@ -53,8 +55,15 @@ def to_contract_out(item: Contract, access: SectorAccess) -> ContractOut:
         end_date=item.endDate,
         unit=item.unit,
         finalized=item.finalized,
+        regularization_stage=cast(RegularizationStage | None, item.regularizationStage),
+        regularization_responsible=item.regularizationResponsible,
+        regularization_deadline=item.regularizationDeadline,
+        regularization_notes=item.regularizationNotes,
+        regularization_history=item.regularizationHistory or [],
         situation=situation,
-        alert=derive_alert(situation=situation, end_date=item.endDate),
+        alert="Regularizacao"
+        if item.regularizationStage and not item.finalized
+        else derive_alert(situation=situation, end_date=item.endDate),
         days_to_end=days_to_end(item.endDate),
         source=item.source,
         notify=item.notify,
@@ -106,6 +115,10 @@ def _json_safe(value: Any) -> Any:
 
 def _snapshot(item: Contract) -> dict[str, Any]:
     fields = (
+        "regularizationStage",
+        "regularizationResponsible",
+        "regularizationDeadline",
+        "regularizationNotes",
         "serviceDescription",
         "serviceValue",
         "ownMaterialValue",
@@ -281,6 +294,10 @@ async def create_contract(
 
 
 _UPDATE_MAPPING = {
+    "regularization_stage": "regularizationStage",
+    "regularization_responsible": "regularizationResponsible",
+    "regularization_deadline": "regularizationDeadline",
+    "regularization_notes": "regularizationNotes",
     "service_description": "serviceDescription",
     "service_value": "serviceValue",
     "own_material_value": "ownMaterialValue",
@@ -305,6 +322,11 @@ async def update_contract(
     assert_can_view(access, item.sectorId)
     assert_can_edit(access, item.sectorId)
 
+    # Serialize updates so concurrent movements cannot overwrite the history.
+    await session.execute(select(Contract.id).where(Contract.id == contract_id).with_for_update())
+    item = await _load_contract(session, contract_id)
+    assert_can_view(access, item.sectorId)
+    assert_can_edit(access, item.sectorId)
     before = _snapshot(item)
     was_enabled = item.notify
     changes = body.model_dump(exclude_unset=True)
@@ -329,6 +351,39 @@ async def update_contract(
     for key, value in changes.items():
         if key in _UPDATE_MAPPING:
             setattr(item, _UPDATE_MAPPING[key], value)
+
+    if item.regularizationStage and item.finalized:
+        item.regularizationStage = None
+    if body.regularization_stage and item.finalized:
+        raise DomainError("Contratos finalizados não podem entrar em regularização")
+    if (
+        before["regularizationStage"]
+        and "regularization_stage" in body.model_fields_set
+        and body.regularization_stage is None
+        and not item.finalized
+        and (item.endDate is None or item.endDate < contracts_today())
+    ):
+        raise DomainError("Para concluir, informe uma vigência atualizada ou finalize o contrato")
+    after = _snapshot(item)
+    tracked = (
+        "regularizationStage",
+        "regularizationResponsible",
+        "regularizationDeadline",
+        "regularizationNotes",
+    )
+    if any(before[key] != after[key] for key in tracked):
+        item.regularizationHistory = [
+            *(item.regularizationHistory or []),
+            {
+                "date": utcnow().isoformat() + "Z",
+                "user": current_user.name,
+                "previousStage": before["regularizationStage"],
+                "stage": item.regularizationStage,
+                "responsible": item.regularizationResponsible,
+                "deadline": _json_safe(item.regularizationDeadline),
+                "notes": item.regularizationNotes,
+            },
+        ]
 
     # Se os componentes financeiros mudaram e total não foi enviado, recalcula.
     value_fields = {"service_value", "own_material_value", "third_party_material_value"}

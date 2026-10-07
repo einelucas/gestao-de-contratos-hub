@@ -25,6 +25,7 @@ const filters = reactive({ de: "", ate: "", unit: "" });
 const overdueHistoryReloadToken = ref(0);
 
 const STATUS_COLOR = {
+  Regularizacao: "#397ac1",
   Regular: "#609346",
   Atencao: "#eaa239",
   Vencido: "#c0392b",
@@ -77,7 +78,8 @@ const kpiCards = computed(() => {
     { label: "Total de contratos", value: k.total, sub: `${k.active} ativos`, tone: "default" as const, icon: FileText },
     { label: "Regulares", value: k.regular, sub: formatPercent(percentOf("Regular")), tone: "good" as const, icon: CircleCheck },
     { label: "Atenção · 20 dias", value: k.atencao, sub: formatPercent(percentOf("Atencao")), tone: "default" as const, icon: TriangleAlert },
-    { label: "Vencidos", value: k.vencido, sub: formatPercent(percentOf("Vencido")), tone: "bad" as const, icon: CalendarX },
+    { label: "Em regularização", value: k.regularization ?? 0, sub: formatPercent(percentOf("Regularizacao")), tone: "default" as const, icon: FileText },
+    { label: "Vencidos pendentes", value: k.vencido, sub: formatPercent(percentOf("Vencido")), tone: "bad" as const, icon: CalendarX },
     { label: "Finalizados", value: k.finalizado, sub: formatPercent(percentOf("Finalizado")), tone: "default" as const, icon: CheckCheck },
   ];
 });
@@ -89,6 +91,7 @@ const statusDonut = computed(() =>
 );
 
 const statusSeries = [
+  { key: "regularization", label: "Em regularização", color: STATUS_COLOR.Regularizacao },
   { key: "regular", label: "Regulares", color: STATUS_COLOR.Regular },
   { key: "atencao", label: "Atenção", color: STATUS_COLOR.Atencao },
   { key: "vencido", label: "Vencidos", color: STATUS_COLOR.Vencido },
@@ -102,6 +105,7 @@ function groupPoints(groups: ContractSummary["byUnit"]) {
     label: group.label,
     value: group.total,
     values: {
+      regularization: group.regularization ?? 0,
       regular: group.regular,
       atencao: group.atencao,
       vencido: group.vencido,
@@ -115,6 +119,7 @@ const unitPoints = computed(() => groupPoints(summary.value?.byUnit ?? []));
 const sectorPoints = computed(() => groupPoints(summary.value?.bySector ?? []));
 
 const monthlySeries = [
+  { key: "regularization", label: "Em regularização", color: STATUS_COLOR.Regularizacao },
   { key: "upcoming", label: "A vencer", color: "#304f7e" },
   { key: "overdue", label: "Vencidos (em aberto)", color: STATUS_COLOR.Vencido },
   { key: "finalized", label: "Finalizados", color: STATUS_COLOR.Finalizado },
@@ -124,7 +129,7 @@ const monthlyPoints = computed(() =>
     key: month.month,
     label: month.label,
     value: month.expiring + month.finalized,
-    values: { upcoming: month.expiring - month.overdue, overdue: month.overdue, finalized: month.finalized },
+    values: { upcoming: month.expiring - month.overdue - (month.regularization ?? 0), regularization: month.regularization ?? 0, overdue: month.overdue, finalized: month.finalized },
   })),
 );
 const valueByUnit = computed(() =>
@@ -197,6 +202,7 @@ function closeDrilldown(): void {
 }
 
 const SERIES_ALERT: Record<string, ContractAlert> = {
+  regularization: "Regularizacao",
   regular: "Regular",
   atencao: "Atencao",
   vencido: "Vencido",
@@ -229,7 +235,9 @@ function onMonthlyBarSelect(payload: { point: { label: string; key?: string }; s
   if (!month) return;
   const segment = payload.seriesKey as MonthSegment | undefined;
   const title =
-    segment === "overdue"
+    segment === "regularization"
+      ? `Contratos em regularização em ${payload.point.label}`
+      : segment === "overdue"
       ? `Contratos vencidos em ${payload.point.label}`
       : segment === "finalized"
         ? `Contratos finalizados em ${payload.point.label}`

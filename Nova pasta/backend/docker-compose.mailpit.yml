@@ -1,0 +1,12 @@
+# Mailpit — SMTP de HOMOLOGAÇÃO LOCAL para os alertas de contratos (opcional).
+# Captura as mensagens sem entregar nada à internet. Nunca usar em produção.
+#   docker compose -f docker-compose.mailpit.yml up -d
+#   SMTP: localhost:1025   Interface: http://localhost:8025
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: gestao_contratos_mailpit
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped

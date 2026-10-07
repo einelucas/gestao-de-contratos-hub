@@ -130,3 +130,14 @@ describe("applyDashboardBaseFilters + drilldown combinados", () => {
     expect(filterByAlert(base, "Vencido").map((c) => c.id)).toEqual(["inRange"]);
   });
 });
+
+describe('regularização no dashboard', () => {
+  const treated = makeContract({ id: 'treated', alert: 'Regularizacao', situation: 'Vencido', endDate: '2026-01-01', daysToEnd: -20 });
+  const pending = makeContract({ id: 'pending', alert: 'Vencido', endDate: '2026-01-01', daysToEnd: -20 });
+  it('separa tratativas dos vencidos pendentes sem contá-las como vigentes', () => {
+    expect(filterByDeadlineBucket([treated, pending], 'overdue').map(c => c.id)).toEqual(['pending']);
+    expect(filterByDeadlineBucket([treated, pending], 'regularization').map(c => c.id)).toEqual(['treated']);
+    expect(filterByMonth([treated, pending], '2026-01', 'regularization').map(c => c.id)).toEqual(['treated']);
+    expect(filterByMonth([treated, pending], '2026-01', 'upcoming')).toEqual([]);
+  });
+});

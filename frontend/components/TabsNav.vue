@@ -6,6 +6,7 @@ const { store } = useAuth();
 interface TabLink { to: string; label: string; icon: typeof FileText; permission?: Permission }
 const mainLinks: TabLink[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard/regularizacao', label: 'Regularização', icon: FileText },
   { to: '/dashboard/contratos', label: 'Contratos', icon: FileText },
 ];
 // Área administrativa (ADMIN). "Registro de Atividades" continua no cabeçalho.
