@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
@@ -66,6 +67,19 @@ async def historico_vencidos(
     current_user: CurrentUser = Depends(require_user),
 ) -> OverdueHistoryOut:
     return await overdue_history.reconcile_and_get_history(session)
+
+
+@router.get("/contratos/vencidos-historico/detalhes", response_model=ContractListOut)
+async def detalhes_historico_vencidos(
+    snapshot_date: date = Query(alias="data"),
+    series: Literal["remaining", "resolved"] = Query(alias="serie"),
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> ContractListOut:
+    items = await overdue_history.list_history_contracts(
+        session, current_user, snapshot_date=snapshot_date, series=series
+    )
+    return ContractListOut(items=items, total=len(items))
 
 
 @router.get("/contratos/importacao/modelo")

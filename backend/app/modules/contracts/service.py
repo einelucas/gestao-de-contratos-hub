@@ -181,12 +181,20 @@ async def list_sectors(session: AsyncSession, actor: CurrentUser) -> list[Sector
 
 
 async def list_contracts(
-    session: AsyncSession, actor: CurrentUser, *, sector_id: str | None = None
+    session: AsyncSession,
+    actor: CurrentUser,
+    *,
+    sector_id: str | None = None,
+    contract_ids: set[str] | None = None,
 ) -> list[ContractOut]:
     access = await sector_access(session, actor)
     stmt = _contract_query().order_by(Contract.endDate.asc().nullslast(), Contract.contractNumber.asc())
     if sector_id:
         stmt = stmt.where(Contract.sectorId == sector_id)
+    if contract_ids is not None:
+        if not contract_ids:
+            return []
+        stmt = stmt.where(Contract.id.in_(contract_ids))
     result = await session.execute(restrict_to_viewable(stmt, access))
     return [to_contract_out(item, access) for item in result.scalars().all()]
 

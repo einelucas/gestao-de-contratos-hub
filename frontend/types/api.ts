@@ -288,6 +288,8 @@ export interface OverdueHistory {
   items: OverdueHistoryPoint[];
 }
 
+export type OverdueHistorySeries = "remaining" | "resolved";
+
 export interface EmailPreview {
   contractId: string;
   contractNumber: string;

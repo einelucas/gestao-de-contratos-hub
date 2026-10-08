@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BarChart3, CalendarClock, CalendarX, CheckCheck, CircleCheck, CircleDollarSign, FileText, FilterX, PieChart, RefreshCw, TriangleAlert } from "lucide-vue-next";
-import type { Contract, ContractAlert, ContractSummary, DeadlineBucket } from "~/types/api";
+import type { Contract, ContractAlert, ContractSummary, DeadlineBucket, OverdueHistorySeries } from "~/types/api";
 import { money, statusLabel } from "~/utils/contracts";
 import {
   applyDashboardBaseFilters,
@@ -177,19 +177,51 @@ const drilldown = reactive<{ open: boolean; title: string; contracts: Contract[]
   contracts: [],
 });
 const drilldownLoading = ref(false);
+const drilldownError = ref("");
 
 async function openDrilldown(title: string, select: (base: Contract[]) => Contract[]): Promise<void> {
   drilldown.title = title;
   drilldown.open = true;
   drilldown.contracts = [];
+  drilldownError.value = "";
   drilldownLoading.value = true;
   try {
     await ensureContracts();
-    if (!contractsLoaded.value) return;
+    if (!contractsLoaded.value) {
+      drilldownError.value = contractsError.value;
+      return;
+    }
     const base = applyDashboardBaseFilters(allContracts.value, filters);
     drilldown.contracts = select(base);
   } finally {
     drilldownLoading.value = false;
+  }
+}
+
+const historyDetailsRequest = createLatestRequest();
+async function openHistoryDrilldown(payload: { date: string; series: OverdueHistorySeries }): Promise<void> {
+  const request = historyDetailsRequest.begin();
+  const dateLabel = new Date(`${payload.date}T00:00:00`).toLocaleDateString("pt-BR");
+  drilldown.title = payload.series === "remaining"
+    ? `Contratos vencidos em ${dateLabel}`
+    : `Contratos regularizados em ${dateLabel}`;
+  drilldown.open = true;
+  drilldown.contracts = [];
+  drilldownError.value = "";
+  drilldownLoading.value = true;
+  try {
+    const response = await api.request<{ items: Contract[] }>("/contratos/vencidos-historico/detalhes", {
+      method: "GET",
+      query: { data: payload.date, serie: payload.series },
+      signal: request.signal,
+    });
+    if (!request.isCurrent()) return;
+    drilldown.contracts = response.items;
+  } catch (cause) {
+    if (!request.isCurrent()) return;
+    drilldownError.value = cause instanceof Error ? cause.message : "Não foi possível carregar os contratos do histórico.";
+  } finally {
+    if (request.isCurrent()) drilldownLoading.value = false;
   }
 }
 function closeDrilldown(): void {
@@ -293,7 +325,7 @@ watch(filters, load, { deep: true, immediate: true });
             <BarChart :points="monthlyPoints" :series="monthlySeries" series-label="Total" @select="onMonthlyBarSelect" />
           </DashboardCard>
 
-          <OverdueResolutionCurve :reload-token="overdueHistoryReloadToken" />
+          <OverdueResolutionCurve :reload-token="overdueHistoryReloadToken" @select="openHistoryDrilldown" />
 
           <DashboardCard v-if="summary.values.hasValues" title="Valores contratados" subtitle="Soma do valor total dos contratos do recorte." :icon="CircleDollarSign" class="span-2">
             <div class="stat-tiles four">
@@ -312,7 +344,7 @@ watch(filters, load, { deep: true, immediate: true });
       :title="drilldown.title"
       :contracts="drilldown.contracts"
       :loading="drilldownLoading"
-      :error="contractsLoaded ? '' : contractsError"
+      :error="drilldownError"
       @close="closeDrilldown"
     />
   </ModuleWorkspace>
