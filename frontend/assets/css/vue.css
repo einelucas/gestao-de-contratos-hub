@@ -79,7 +79,7 @@ button:disabled {
 
 .app-toolbar-shell,
 .nuxt-app-main {
-  width: min(calc(100% - 40px), 1320px);
+  width: min(calc(100% - 48px), 1680px);
   margin-inline: auto;
 }
 
@@ -568,7 +568,7 @@ button:disabled {
 @media (max-width: 900px) {
   .app-toolbar-shell,
   .nuxt-app-main {
-    width: min(calc(100% - 28px), 1320px);
+    width: min(calc(100% - 28px), 1680px);
   }
 }
 
@@ -1134,7 +1134,7 @@ button:disabled {
 @media (max-width: 599px) {
   .app-toolbar-shell,
   .nuxt-app-main {
-    width: min(calc(100% - 20px), 1320px);
+    width: min(calc(100% - 20px), 1680px);
   }
   .contract-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
