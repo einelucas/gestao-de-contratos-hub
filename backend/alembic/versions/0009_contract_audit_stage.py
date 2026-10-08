@@ -1,7 +1,7 @@
 """Etapa persistida do Kanban de auditoria de contratos vencidos.
 
-Revision ID: 0008_contract_audit_stage
-Revises: 0007_overdue_open_unique
+Revision ID: 0009_contract_audit_stage
+Revises: 0008_regularization
 Create Date: 2026-10-08
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0008_contract_audit_stage"
-down_revision: str | None = "0007_overdue_open_unique"
+revision: str = "0009_contract_audit_stage"
+down_revision: str | None = "0008_regularization"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
