@@ -5,7 +5,7 @@ import { dateBr, daysToEndLabel, money } from "~/utils/contracts";
 
 const STAGES: Array<{ key: AuditStage; label: string; color: string }> = [
   { key: "AGUARDANDO_ANALISE", label: "Aguardando Análise", color: "#c85d76" },
-  { key: "CHAMADO_ELES", label: "Chamado Eles", color: "#2f73d9" },
+  { key: "CHAMADO_ELES", label: "Chamado Elos", color: "#2f73d9" },
   { key: "ANALISE_INTERNA_INPASA", label: "Análise Interna – INPASA", color: "#d98bd2" },
   { key: "FORNECEDOR_CONTATADO", label: "Fornecedor Contatado", color: "#2f9870" },
   { key: "EM_TRATATIVA", label: "Em Tratativa", color: "#35bd86" },
