@@ -98,6 +98,52 @@ async def test_resolving_a_contract_increments_cumulative_and_never_decreases(
     assert resolved_rows[0].contractId == ids["overdue"][0]
 
 
+async def test_history_details_lists_remaining_and_resolved_contracts_for_selected_date(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session, overdue=2)
+    today = contracts_today().isoformat()
+    assert (await client.get(HISTORY_URL, headers=auth_header("ADMIN"))).status_code == 200
+
+    resolved_contract = await db_session.get(Contract, ids["overdue"][0])
+    resolved_contract.finalized = True
+    await db_session.commit()
+    assert (await client.get(HISTORY_URL, headers=auth_header("ADMIN"))).status_code == 200
+
+    remaining = await client.get(
+        f"{HISTORY_URL}/detalhes",
+        params={"data": today, "serie": "remaining"},
+        headers=auth_header("ADMIN"),
+    )
+    resolved = await client.get(
+        f"{HISTORY_URL}/detalhes",
+        params={"data": today, "serie": "resolved"},
+        headers=auth_header("ADMIN"),
+    )
+
+    assert remaining.status_code == 200
+    assert remaining.json()["total"] == 1
+    assert remaining.json()["items"][0]["id"] == ids["overdue"][1]
+    assert resolved.status_code == 200
+    assert resolved.json()["total"] == 1
+    assert resolved.json()["items"][0]["id"] == ids["overdue"][0]
+
+
+async def test_history_details_respects_sector_permissions(client, auth_header, db_session) -> None:
+    await _seed(db_session, overdue=1)
+    today = contracts_today().isoformat()
+    assert (await client.get(HISTORY_URL, headers=auth_header("ADMIN"))).status_code == 200
+
+    response = await client.get(
+        f"{HISTORY_URL}/detalhes",
+        params={"data": today, "serie": "remaining"},
+        headers=auth_header("VIEWER"),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+
 async def test_history_is_org_wide_regardless_of_sector_permission(client, auth_header, db_session) -> None:
     """VIEWER sem nenhuma permissão de setor ainda vê o indicador agregado."""
     await _seed(db_session, overdue=1)

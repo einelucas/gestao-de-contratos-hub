@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { TrendingDown } from "lucide-vue-next";
-import type { OverdueHistoryPoint } from "~/types/api";
+import type { OverdueHistoryPoint, OverdueHistorySeries } from "~/types/api";
 import { formatNumber } from "~/utils/format";
 
 /**
@@ -20,6 +20,9 @@ import { formatNumber } from "~/utils/format";
  * Dashboard é carregado/atualizado, para a curva acompanhar o resto da tela.
  */
 const props = defineProps<{ reloadToken: number }>();
+const emit = defineEmits<{
+  select: [payload: { date: string; series: OverdueHistorySeries }];
+}>();
 
 const api = useApi();
 const points = ref<OverdueHistoryPoint[]>([]);
@@ -53,6 +56,14 @@ function formatDateLabel(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
+function pointAriaLabel(point: OverdueHistoryPoint, series: OverdueHistorySeries): string {
+  const count = series === "remaining" ? point.remaining : point.resolved;
+  const label = series === "remaining"
+    ? `${count} contratos vencidos. Abrir contratos vencidos nesta data.`
+    : `${count} regularizações acumuladas. Abrir contratos regularizados nesta data.`;
+  return `${formatDateLabel(point.date)}: ${label}`;
+}
+
 const width = 900;
 const height = 300;
 const pad = { left: 56, right: 30, top: 32, bottom: 50 };
@@ -66,6 +77,11 @@ const yMax = computed(() => {
 
 const x = (index: number) => pad.left + (index * plotWidth) / Math.max(1, points.value.length - 1);
 const y = (value: number) => height - pad.bottom - (value / yMax.value) * plotHeight;
+function dotX(index: number, series: OverdueHistorySeries): number {
+  const point = points.value[index];
+  if (!point || point.remaining !== point.resolved) return x(index);
+  return x(index) + (series === "remaining" ? -6 : 6);
+}
 
 const yTicks = computed(() => {
   const steps = 4;
@@ -177,11 +193,6 @@ const tooltipStyle = computed(() => {
           <path v-if="resolvedPath" :d="resolvedPath" fill="none" class="curve-line curve-resolved" />
 
           <template v-for="(point, index) in points" :key="point.date">
-            <circle :cx="x(index)" :cy="y(point.remaining)" :r="hoveredIndex === index ? 6 : 5" class="curve-dot curve-remaining-dot" />
-            <circle :cx="x(index)" :cy="y(point.resolved)" :r="hoveredIndex === index ? 6 : 5" class="curve-dot curve-resolved-dot" />
-            <text :x="x(index)" :y="height - 16" text-anchor="middle" class="chart-x-label" :class="{ 'chart-x-label--active': hoveredIndex === index }">
-              {{ formatDateLabel(point.date) }}
-            </text>
             <rect
               :x="x(index) - plotWidth / Math.max(1, points.length * 2)"
               y="0"
@@ -191,6 +202,27 @@ const tooltipStyle = computed(() => {
               @mouseenter="hoveredIndex = index"
               @mouseleave="hoveredIndex = null"
             />
+            <circle
+              :cx="dotX(index, 'remaining')" :cy="y(point.remaining)" :r="hoveredIndex === index ? 6 : 5"
+              class="curve-dot curve-remaining-dot" role="button" tabindex="0"
+              :aria-label="pointAriaLabel(point, 'remaining')"
+              @mouseenter="hoveredIndex = index"
+              @click="emit('select', { date: point.date, series: 'remaining' })"
+              @keydown.enter.prevent="emit('select', { date: point.date, series: 'remaining' })"
+              @keydown.space.prevent="emit('select', { date: point.date, series: 'remaining' })"
+            />
+            <circle
+              :cx="dotX(index, 'resolved')" :cy="y(point.resolved)" :r="hoveredIndex === index ? 6 : 5"
+              class="curve-dot curve-resolved-dot" role="button" tabindex="0"
+              :aria-label="pointAriaLabel(point, 'resolved')"
+              @mouseenter="hoveredIndex = index"
+              @click="emit('select', { date: point.date, series: 'resolved' })"
+              @keydown.enter.prevent="emit('select', { date: point.date, series: 'resolved' })"
+              @keydown.space.prevent="emit('select', { date: point.date, series: 'resolved' })"
+            />
+            <text :x="x(index)" :y="height - 16" text-anchor="middle" class="chart-x-label" :class="{ 'chart-x-label--active': hoveredIndex === index }">
+              {{ formatDateLabel(point.date) }}
+            </text>
           </template>
         </svg>
 
@@ -205,6 +237,7 @@ const tooltipStyle = computed(() => {
       <div class="chart-legend">
         <span class="chart-legend-item"><span class="chart-legend-square curve-remaining-dot" />Vencidos restantes</span>
         <span class="chart-legend-item"><span class="chart-legend-square curve-resolved-dot" />Regularizações (acumulado)</span>
+        <span class="chart-legend-hint">Clique em um ponto para ver os contratos.</span>
       </div>
     </div>
   </DashboardCard>
@@ -316,6 +349,11 @@ const tooltipStyle = computed(() => {
   stroke: #ffffff;
   stroke-width: 1.5;
 }
+.curve-dot:focus {
+  outline: none;
+  stroke: #20324a;
+  stroke-width: 2.5;
+}
 .curve-remaining-dot {
   fill: #c0392b;
   background: #c0392b;
@@ -371,6 +409,12 @@ const tooltipStyle = computed(() => {
   width: 9px;
   height: 9px;
   border-radius: 3px;
+}
+.chart-legend-hint {
+  flex-basis: 100%;
+  text-align: center;
+  color: #8a97ab;
+  font-size: 11px;
 }
 @media (max-width: 768px) {
   .real-data-badge {

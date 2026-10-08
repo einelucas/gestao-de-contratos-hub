@@ -21,14 +21,19 @@ migração 0007).
 
 from __future__ import annotations
 
-from sqlalchemy import func, select, text
+from datetime import date
+from typing import Literal
+
+from sqlalchemy import ColumnElement, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import CurrentUser
 from app.models.common import utcnow
 from app.models.contracts import Contract, OverdueContractTracking, OverdueDailySnapshot
+from app.modules.contracts import service
 from app.modules.contracts.rules import contracts_today, derive_alert, derive_situation
-from app.modules.contracts.schemas import OverdueHistoryOut, OverdueHistoryPointOut
+from app.modules.contracts.schemas import ContractOut, OverdueHistoryOut, OverdueHistoryPointOut
 
 
 async def _current_overdue_contract_ids(session: AsyncSession) -> set[str]:
@@ -111,3 +116,34 @@ async def reconcile_and_get_history(session: AsyncSession) -> OverdueHistoryOut:
             for point in history
         ]
     )
+
+
+async def list_history_contracts(
+    session: AsyncSession,
+    actor: CurrentUser,
+    *,
+    snapshot_date: date,
+    series: Literal["remaining", "resolved"],
+) -> list[ContractOut]:
+    """Lista os contratos de um ponto histórico respeitando o acesso por setor."""
+    condition: ColumnElement[bool]
+    if series == "remaining":
+        condition = (
+            (OverdueContractTracking.firstSeenOverdueAt <= snapshot_date)
+            & or_(
+                OverdueContractTracking.resolvedAt.is_(None),
+                OverdueContractTracking.resolvedAt > snapshot_date,
+            )
+        )
+    else:
+        # A curva verde é acumulada; o popup mostra as resoluções ocorridas no dia clicado.
+        condition = OverdueContractTracking.resolvedAt == snapshot_date
+
+    contract_ids = set(
+        (
+            await session.execute(
+                select(OverdueContractTracking.contractId).where(condition).distinct()
+            )
+        ).scalars()
+    )
+    return await service.list_contracts(session, actor, contract_ids=contract_ids)
