@@ -20,6 +20,7 @@ from app.modules.contracts.access import (
     restrict_to_viewable,
     sector_access,
 )
+from app.modules.contracts.audit_workflow import sync_contract_audit_stage
 from app.modules.contracts.rules import contracts_today, days_to_end, derive_alert, derive_situation
 from app.modules.contracts.schemas import (
     ContractCreateIn,
@@ -53,6 +54,7 @@ def to_contract_out(item: Contract, access: SectorAccess) -> ContractOut:
         end_date=item.endDate,
         unit=item.unit,
         finalized=item.finalized,
+        audit_stage=item.auditStage,
         situation=situation,
         alert=derive_alert(situation=situation, end_date=item.endDate),
         days_to_end=days_to_end(item.endDate),
@@ -115,6 +117,7 @@ def _snapshot(item: Contract) -> dict[str, Any]:
         "endDate",
         "unit",
         "finalized",
+        "auditStage",
         "sectorId",
         "notify",
         "notifyEnabledOn",
@@ -268,6 +271,7 @@ async def create_contract(
     )
     await _validate_notification_team(session, item)
     _track_notify_enabled(item, was_enabled=False)
+    sync_contract_audit_stage(item)
     session.add(item)
     await session.flush()
     await record_audit(
@@ -349,7 +353,17 @@ async def update_contract(
 
     await _validate_notification_team(session, item)
     _track_notify_enabled(item, was_enabled)
+    sync_contract_audit_stage(item, deadline_changed="end_date" in body.model_fields_set)
     await session.flush()
+    audited_changes = {
+        key: _json_safe(value)
+        for key, value in body.model_dump(exclude_unset=True, by_alias=True).items()
+    }
+    # Registra também os efeitos automáticos da nova vigência no fluxo de auditoria.
+    if before["auditStage"] != item.auditStage:
+        audited_changes["auditStage"] = item.auditStage
+    if before["finalized"] != item.finalized:
+        audited_changes["finalized"] = item.finalized
     await record_audit(
         session,
         user_id=current_user.id,
@@ -358,10 +372,7 @@ async def update_contract(
         entity_id=item.id,
         previous_data=before,
         # Chaves em camelCase, como em previous_data (`_snapshot`) e no restante da auditoria.
-        new_data={
-            key: _json_safe(value)
-            for key, value in body.model_dump(exclude_unset=True, by_alias=True).items()
-        },
+        new_data=audited_changes,
     )
     item_id = item.id
     await session.commit()

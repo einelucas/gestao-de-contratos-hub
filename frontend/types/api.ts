@@ -24,6 +24,14 @@ export type ContractCriticality = "BAIXA" | "MEDIA" | "ALTA";
 
 export type ContractSituation = "Vigente" | "Vencido" | "Sem data" | "Finalizado";
 export type ContractAlert = "Regular" | "Atencao" | "Vencido" | "SemData" | "Finalizado";
+export type AuditStage =
+  | "AGUARDANDO_ANALISE"
+  | "CHAMADO_ELES"
+  | "ANALISE_INTERNA_INPASA"
+  | "FORNECEDOR_CONTATADO"
+  | "EM_TRATATIVA"
+  | "EM_FINALIZACAO"
+  | "FINALIZADO";
 
 export interface Contract {
   id: string;
@@ -41,6 +49,7 @@ export interface Contract {
   endDate: string | null;
   unit: string;
   finalized: boolean;
+  auditStage: AuditStage | null;
   situation: ContractSituation;
   alert: ContractAlert;
   daysToEnd: number | null;
@@ -63,6 +72,11 @@ export interface Contract {
   canEdit: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AuditBoard {
+  items: Contract[];
+  units: string[];
 }
 
 export interface ContractUpdatePayload {

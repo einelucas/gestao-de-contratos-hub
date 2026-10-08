@@ -1,14 +1,13 @@
 <script setup lang="ts">
-definePageMeta({ middleware: "admin" });
+definePageMeta({ middleware: "auth" });
 </script>
 
 <template>
-  <section>
-    <NuxtLink class="admin-back" to="/dashboard">← Voltar ao painel</NuxtLink>
-    <ReferenceSectionHeader
-      title="Registro de Atividades"
-      description="Trilha de eventos administrativos e alterações registradas pelo sistema."
-    />
-    <AuditViewer />
-  </section>
+  <ModuleWorkspace
+    eyebrow="Projetos e Arquitetura · Contratos"
+    title="Auditoria"
+    description="Acompanhe e conduza a regularização dos contratos vencidos."
+  >
+    <ContractAuditKanban />
+  </ModuleWorkspace>
 </template>
