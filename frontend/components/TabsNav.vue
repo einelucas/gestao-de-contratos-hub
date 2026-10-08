@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FileText, LayoutDashboard, Send, Users } from "lucide-vue-next";
+import { Columns3, FileText, LayoutDashboard, Send, Users } from "lucide-vue-next";
 import type { Permission } from "~/types/api";
 const route = useRoute();
 const { store } = useAuth();
@@ -7,6 +7,7 @@ interface TabLink { to: string; label: string; icon: typeof FileText; permission
 const mainLinks: TabLink[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/dashboard/contratos', label: 'Contratos', icon: FileText },
+  { to: '/dashboard/auditoria', label: 'Auditoria', icon: Columns3 },
 ];
 // Área administrativa (ADMIN). "Registro de Atividades" continua no cabeçalho.
 // "Permissões" fica fora do fluxo atual (homologação), mas a infraestrutura (rota, componente,

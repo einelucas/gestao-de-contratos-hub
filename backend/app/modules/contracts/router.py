@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import CurrentUser, require_permission, require_user
 from app.core.database import get_session
 from app.core.permissions import Permission
-from app.modules.contracts import import_service, overdue_history, service, summary
+from app.modules.contracts import audit_board, import_service, overdue_history, service, summary
 from app.modules.contracts.schemas import (
+    AuditBoardMoveIn,
+    AuditBoardOut,
     ContractCreateIn,
     ContractListOut,
     ContractOut,
@@ -80,6 +82,14 @@ async def detalhes_historico_vencidos(
         session, current_user, snapshot_date=snapshot_date, series=series
     )
     return ContractListOut(items=items, total=len(items))
+
+
+@router.get("/contratos/auditoria", response_model=AuditBoardOut)
+async def quadro_auditoria(
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> AuditBoardOut:
+    return await audit_board.get_board(session, current_user)
 
 
 @router.get("/contratos/importacao/modelo")
@@ -154,6 +164,16 @@ async def update_contrato(
     current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_MANAGE)),
 ) -> ContractOut:
     return await service.update_contract(session, contract_id, body, current_user)
+
+
+@router.patch("/contratos/{contract_id}/auditoria", response_model=ContractOut)
+async def mover_contrato_auditoria(
+    contract_id: str,
+    body: AuditBoardMoveIn,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> ContractOut:
+    return await audit_board.move_contract(session, contract_id, body.stage, current_user)
 
 
 @router.get("/responsaveis", response_model=ResponsibleListOut)

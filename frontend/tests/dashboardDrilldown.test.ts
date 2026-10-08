@@ -25,6 +25,7 @@ function makeContract(overrides: Partial<Contract>): Contract {
     endDate: null,
     unit: "LEM",
     finalized: false,
+    auditStage: null,
     situation: "Vigente",
     alert: "Regular",
     daysToEnd: null,

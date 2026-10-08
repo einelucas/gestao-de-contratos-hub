@@ -2,11 +2,22 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from app.models.contracts import ContractCriticality
 from app.shared.schema import CamelModel
+
+AuditStage = Literal[
+    "AGUARDANDO_ANALISE",
+    "CHAMADO_ELES",
+    "ANALISE_INTERNA_INPASA",
+    "FORNECEDOR_CONTATADO",
+    "EM_TRATATIVA",
+    "EM_FINALIZACAO",
+    "FINALIZADO",
+]
 
 
 class SectorOut(CamelModel):
@@ -45,6 +56,7 @@ class ContractOut(CamelModel):
     end_date: date | None
     unit: str
     finalized: bool
+    audit_stage: AuditStage | None
     situation: str
     alert: str
     days_to_end: int | None
@@ -72,6 +84,15 @@ class ContractOut(CamelModel):
 class ContractListOut(CamelModel):
     items: list[ContractOut]
     total: int
+
+
+class AuditBoardMoveIn(CamelModel):
+    stage: AuditStage
+
+
+class AuditBoardOut(CamelModel):
+    items: list[ContractOut]
+    units: list[str]
 
 
 class SummaryKpisOut(CamelModel):

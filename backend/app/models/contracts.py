@@ -119,6 +119,8 @@ class Contract(Base):
     endDate: Mapped[date | None] = mapped_column(Date, nullable=True)
     unit: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     finalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Etapa do fluxo de auditoria. Nulo mantém o contrato fora do Kanban.
+    auditStage: Mapped[str | None] = mapped_column(String(40), nullable=True)
     source: Mapped[str] = mapped_column(String(80), nullable=False, default="manual")
     # Alertas de vencimento por e-mail: régua fixa 45/20/1/0 dias enviada aos
     # membros ativos da equipe `notificationTeamId`. O status visual (Atenção)
@@ -153,6 +155,7 @@ class Contract(Base):
         Index("Contract_supplierId_idx", "supplierId"),
         Index("Contract_endDate_idx", "endDate"),
         Index("Contract_unit_idx", "unit"),
+        Index("Contract_auditStage_idx", "auditStage"),
         Index("Contract_responsibleUserId_idx", "responsibleUserId"),
         Index("Contract_notify_endDate_idx", "notify", "endDate"),
         Index("Contract_notificationTeamId_idx", "notificationTeamId"),
