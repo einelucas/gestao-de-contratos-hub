@@ -1,40 +1,34 @@
-# Design QA — Kanban de Auditoria
+# Design QA — Layout amplo e Kanban de Auditoria
 
-- Source visual truth: screenshot fornecida pelo usuário nesta conversa (quadro Kanban desktop, 1130 × 394 px).
-- Implementation screenshots: `/tmp/kanban-auditoria.png`, `/tmp/kanban-auditoria-finalizado.png` e `/tmp/kanban-auditoria-mobile.png`.
-- Desktop viewport: 1440 × 900 CSS px, device scale factor 1. Captura completa: 1440 × 1274 px.
-- Mobile viewport: 390 × 900 CSS px, device scale factor 1. Captura: 390 × 900 px.
-- State: quadro carregado com contratos em todas as etapas; filtro de unidade exercitado; card movido por drag and drop e depois movido para Finalizado pelo seletor acessível.
+- Fonte visual principal: página `frontend/pages/equipamentos/kanban.vue` e estilos globais do repositório `hub-painel-de-equipamentos-main (1).zip`, anexado pelo usuário.
+- Referência fornecida: captura desktop de 1798 × 853 px.
+- Implementação validada: capturas `/tmp/kanban-auditoria-layout.png`, `/tmp/kanban-auditoria-layout-finalizado.png` e `/tmp/kanban-auditoria-layout-mobile.png`.
+- Viewports: 1798 × 900 px e 390 × 900 px, device scale factor 1.
 
-## Full-view comparison evidence
+## Comparação da página completa
 
-The implementation preserves the source composition: seven adjacent workflow columns, strong semantic header colors, compact white contract cards, stage totals, and a horizontally scannable board. It integrates the board into the existing Hub shell and adds the requested Finalizado column. The unit control is presented as a filter above the board instead of repeating unit accordions from the source, matching the user's request for direct control over all columns.
+O Hub de Contratos agora usa o mesmo limite útil de 1680 px e margem desktop de 48 px do repositório de referência. Barra de navegação, título, filtros, resumo e quadro compartilham o mesmo alinhamento lateral. Em telas menores, as margens diminuem para 28 px e 20 px, mantendo o comportamento responsivo existente.
 
-## Focused region comparison evidence
+## Comparação do quadro
 
-The board region was inspected at desktop size because column headers, card density, metadata, and controls are the fidelity-critical details. Cards retain the reference's compact number and supplier hierarchy while adding unit, sector, deadline, overdue duration, value, drag affordance, and an accessible stage selector. No raster imagery or custom illustrations exist in the source, so image-asset comparison is not applicable.
+O Kanban reproduz a estrutura do modelo de equipamentos: filtros largos em uma linha, resumo em superfície própria, quadro horizontal com largura intrínseca, colunas de 286 px, cabeçalhos brancos, etapa numerada, contador circular, faixa de cor, altura limitada pela viewport, rolagem interna de cards e barra horizontal discreta. Os cards mantêm os dados próprios de contratos e os controles de drag and drop e movimentação por teclado.
 
-## Required fidelity surfaces
+## Superfícies verificadas
 
-- Fonts and typography: existing Hub Manrope stack, compact uppercase card labels, clear supplier hierarchy, and readable small metadata align with the product and reference density.
-- Spacing and layout rhythm: seven columns fit the desktop content width; consistent 10 px gaps, compact cards, aligned headers, and stable column heights preserve the reference rhythm. Mobile uses deliberate horizontal board scrolling.
-- Colors and visual tokens: stage colors follow the reference semantics while surfaces, borders, shadows, focus rings, and text use existing Hub tokens.
-- Image quality and asset fidelity: the reference contains no image assets. Existing Hub logo and Lucide interface icons are reused without generated or placeholder imagery.
-- Copy and content: all seven requested stages are present, including Finalizado. Filter, search, totals, empty states, error state, update action, drag guidance, and read-only state use concise Portuguese copy.
-- Accessibility and interaction: cards can be moved by drag and drop or native select; focus styles are visible; read-only cards are labeled; unit filter and search are labeled; API and page console produced no application errors. The isolated browser could not fetch the external Google font because of its network tunnel, but the local fallback rendered correctly.
+- Tipografia: hierarquia compacta e pesos equivalentes ao modelo, usando a fonte já adotada pelo Hub.
+- Espaçamento: largura, margens, gaps de 12 px, colunas e preenchimentos seguem as medidas do repositório anexado.
+- Cores: superfícies e bordas seguem o modelo; as cores das etapas do fluxo de contratos foram preservadas.
+- Conteúdo: número, fornecedor, unidade, setor, vencimento e valor permanecem legíveis nos cards.
+- Interação: filtro de unidade, busca, atualização, drag and drop, seletor de etapa e abertura do contrato foram preservados.
+- Responsividade: em 390 px os filtros e o resumo empilham, e o quadro mantém colunas de 238 px com rolagem horizontal.
+- Console: nenhum erro da aplicação. A única mensagem observada foi a indisponibilidade da fonte externa no túnel isolado de teste.
 
-## Comparison history
+## Histórico de comparação
 
-- First rendered pass: no P0, P1, or P2 fidelity findings. The richer metadata and Hub toolbar are intentional product adaptations requested by the user.
-- Interaction pass: unit filter returned only the expected cards; drag and drop persisted the new stage; moving the same card to Finalizado updated the final column.
-- Responsive pass: at 390 px the filters stack and the first column remains fully usable while the seven-stage board scrolls horizontally.
+- Primeira renderização: identificada contração vertical dos cards quando três itens ocupavam uma coluna.
+- Correção: cards passaram a usar `flex: 0 0 auto`, permitindo rolagem interna e mantendo todos os controles visíveis.
+- Renderização final: sete colunas, filtro, drag and drop e finalização validados sem erros.
 
-## Findings
-
-No actionable P0, P1, or P2 findings remain.
-
-## Follow-up polish
-
-- P3: a future mobile-specific stage picker could replace horizontal scrolling if mobile Kanban usage becomes frequent.
+Nenhum achado P0, P1 ou P2 permanece.
 
 final result: passed
