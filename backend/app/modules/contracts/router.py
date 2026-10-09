@@ -166,6 +166,16 @@ async def update_contrato(
     return await service.update_contract(session, contract_id, body, current_user)
 
 
+@router.delete("/contratos/{contract_id}", status_code=204)
+async def delete_contrato(
+    contract_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_MANAGE)),
+) -> Response:
+    await service.delete_contract(session, contract_id, current_user)
+    return Response(status_code=204)
+
+
 @router.patch("/contratos/{contract_id}/auditoria", response_model=ContractOut)
 async def mover_contrato_auditoria(
     contract_id: str,

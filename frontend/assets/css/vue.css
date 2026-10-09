@@ -375,6 +375,32 @@ button:disabled {
   background: #213758;
 }
 
+.btn.danger-outline {
+  border-color: #efc3bf;
+  color: #a83128;
+}
+
+.btn.danger-outline:hover:not(:disabled) {
+  border-color: #d98982;
+  background: #fff4f3;
+}
+
+.btn.danger-solid {
+  border-color: #a83128;
+  background: #a83128;
+  color: #fff;
+}
+
+.btn.danger-solid:hover:not(:disabled) {
+  border-color: #87271f;
+  background: #87271f;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .btn.small {
   min-height: 32px;
   padding: 5px 9px;
@@ -1381,6 +1407,60 @@ button:disabled {
   color: #a83128;
   font-size: 12px;
   font-weight: 600;
+}
+
+.delete-contract-confirmation {
+  display: grid;
+  gap: 18px;
+}
+
+.delete-contract-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  border: 1px solid #efc3bf;
+  border-radius: 11px;
+  padding: 14px;
+  background: #fff5f4;
+  color: #a83128;
+}
+
+.delete-contract-warning svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.delete-contract-warning strong {
+  font-size: 13px;
+}
+
+.delete-contract-warning p {
+  margin: 4px 0 0;
+  color: #754944;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.delete-contract-confirmation label {
+  display: grid;
+  gap: 7px;
+  color: #40536c;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.delete-contract-confirmation input {
+  min-height: 40px;
+  border: 1px solid #cfd8e4;
+  border-radius: 9px;
+  padding: 8px 11px;
+  color: #20324a;
+  font: inherit;
+}
+
+.delete-contract-confirmation input:focus {
+  border-color: #5a78a4;
+  outline: 3px solid rgba(90, 120, 164, 0.14);
 }
 .form-hint {
   display: flex;
