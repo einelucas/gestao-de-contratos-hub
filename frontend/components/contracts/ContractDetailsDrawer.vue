@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { BellOff, BellRing, Eye, Pencil, Trash2, TriangleAlert, X } from "lucide-vue-next";
+import { AlarmClock, BellOff, BellRing, Check, Copy, Eye, Pencil, Trash2, TriangleAlert, X } from "lucide-vue-next";
 import type { Contract, Sector } from "~/types/api";
-import { dateBr, daysToEndLabel, money } from "~/utils/contracts";
+import { dateBr, daysToEndLabel, money, overdueDays, overdueLabel } from "~/utils/contracts";
 import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
 
 const props = defineProps<{ contract: Contract | null; sectors: Sector[] }>();
@@ -14,7 +14,25 @@ const deleting = ref(false);
 const deleteBusy = ref(false);
 const deleteError = ref("");
 const deleteConfirmation = ref("");
+const copied = ref(false);
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+const lateDays = computed(() => (props.contract ? overdueDays(props.contract) : null));
+
+async function copyNumber(): Promise<void> {
+  if (!props.contract) return;
+  try {
+    await navigator.clipboard.writeText(props.contract.contractNumber);
+    copied.value = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => { copied.value = false; }, 1500);
+  } catch {
+    copied.value = false;
+  }
+}
+onBeforeUnmount(() => clearTimeout(copiedTimer));
+
 watch(() => props.contract?.id, () => {
+  copied.value = false;
   editing.value = false;
   previewing.value = false;
   deleting.value = false;
@@ -62,7 +80,22 @@ async function confirmDelete(): Promise<void> {
     <div v-if="contract" class="drawer-backdrop" @click.self="emit('close')">
       <aside class="contract-drawer" aria-label="Detalhes do contrato">
         <header>
-          <div><span class="drawer-eyebrow">Contrato {{ contract.contractNumber }}</span><h2>{{ contract.supplier }}</h2></div>
+          <div>
+            <div class="drawer-contract-number">
+              <span class="drawer-eyebrow">Contrato {{ contract.contractNumber }}</span>
+              <button
+                type="button"
+                class="copy-number-button"
+                :class="{ copied }"
+                :aria-label="copied ? 'Número copiado' : 'Copiar número do contrato'"
+                :title="copied ? 'Copiado!' : 'Copiar número do contrato'"
+                @click="copyNumber"
+              >
+                <component :is="copied ? Check : Copy" class="size-3.5" />
+              </button>
+            </div>
+            <h2>{{ contract.supplier }}</h2>
+          </div>
           <div class="drawer-actions">
             <button v-if="contract.canEdit" type="button" class="btn small danger-outline" @click="openDeleteConfirmation"><Trash2 class="size-3.5" />Excluir</button>
             <button v-if="contract.canEdit" type="button" class="btn small" @click="editing = true"><Pencil class="size-3.5" />Editar</button>
@@ -71,7 +104,9 @@ async function confirmDelete(): Promise<void> {
         </header>
         <div class="drawer-body">
           <div class="drawer-status-line">
-            <ContractStatusBadge :alert="contract.alert" /><span>{{ contract.unit }}</span><span>{{ contract.sectorName }}</span>
+            <ContractStatusBadge :alert="contract.alert" />
+            <span v-if="lateDays !== null" class="contract-overdue"><AlarmClock class="size-3.5" />{{ overdueLabel(lateDays) }}</span>
+            <span>{{ contract.unit }}</span><span>{{ contract.sectorName }}</span>
             <span v-if="contract.criticality" class="pill" :class="`criticality-${contract.criticality.toLowerCase()}`">
               Criticidade {{ CRITICALITY_LABEL[contract.criticality] }}
             </span>

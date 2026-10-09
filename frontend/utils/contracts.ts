@@ -27,6 +27,16 @@ export function daysToEndLabel(days: number | null): string {
   return `Vencido há ${-days} dias`;
 }
 
+/** Dias em atraso de um contrato em aberto; `null` quando não está vencido (ou já foi finalizado). */
+export function overdueDays(contract: Pick<Contract, "daysToEnd" | "finalized">): number | null {
+  if (contract.finalized || contract.daysToEnd === null || contract.daysToEnd >= 0) return null;
+  return -contract.daysToEnd;
+}
+
+export function overdueLabel(days: number): string {
+  return days === 1 ? "1 dia em atraso" : `${days} dias em atraso`;
+}
+
 const rank: Record<ContractAlert, number> = { Vencido: 1, Atencao: 2, SemData: 3, Regular: 4, Finalizado: 5 };
 export function sortContracts(items: Contract[], mode: SortMode): Contract[] {
   return [...items].sort((a, b) => {

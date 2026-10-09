@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Building2, CalendarDays, FileText } from "lucide-vue-next";
+import { AlarmClock, Building2, CalendarDays, FileText } from "lucide-vue-next";
 import type { Contract } from "~/types/api";
-import { dateBr, money } from "~/utils/contracts";
-defineProps<{ contract: Contract; list?: boolean }>();
+import { dateBr, money, overdueDays, overdueLabel } from "~/utils/contracts";
+const props = defineProps<{ contract: Contract; list?: boolean }>();
 const emit = defineEmits<{ select: [contract: Contract] }>();
+const lateDays = computed(() => overdueDays(props.contract));
 </script>
 <template>
   <button type="button" class="contract-card" :class="{ 'is-list': list }" @click="emit('select', contract)">
@@ -16,6 +17,7 @@ const emit = defineEmits<{ select: [contract: Contract] }>();
       <span><Building2 class="size-4" />{{ contract.unit || 'Sem unidade' }}</span>
       <span><CalendarDays class="size-4" />{{ dateBr(contract.endDate) }}</span>
       <span><FileText class="size-4" />{{ money(contract.totalValue) }}</span>
+      <span v-if="lateDays !== null" class="contract-overdue"><AlarmClock class="size-4" />{{ overdueLabel(lateDays) }}</span>
     </div>
   </button>
 </template>
