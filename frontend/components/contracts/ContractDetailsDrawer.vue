@@ -1,22 +1,60 @@
 <script setup lang="ts">
-import { BellOff, BellRing, Eye, Pencil, X } from "lucide-vue-next";
+import { BellOff, BellRing, Eye, Pencil, Trash2, TriangleAlert, X } from "lucide-vue-next";
 import type { Contract, Sector } from "~/types/api";
 import { dateBr, daysToEndLabel, money } from "~/utils/contracts";
 import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
 
 const props = defineProps<{ contract: Contract | null; sectors: Sector[] }>();
-const emit = defineEmits<{ close: []; updated: [contract: Contract] }>();
+const emit = defineEmits<{ close: []; updated: [contract: Contract]; deleted: [contractId: string] }>();
+const api = useApi();
 
 const editing = ref(false);
 const previewing = ref(false);
+const deleting = ref(false);
+const deleteBusy = ref(false);
+const deleteError = ref("");
+const deleteConfirmation = ref("");
 watch(() => props.contract?.id, () => {
   editing.value = false;
   previewing.value = false;
+  deleting.value = false;
+  deleteBusy.value = false;
+  deleteError.value = "";
+  deleteConfirmation.value = "";
 });
 
 function onSaved(updated: Contract): void {
   editing.value = false;
   emit("updated", updated);
+}
+
+function openDeleteConfirmation(): void {
+  deleteConfirmation.value = "";
+  deleteError.value = "";
+  deleting.value = true;
+}
+
+function closeDeleteConfirmation(): void {
+  if (deleteBusy.value) return;
+  deleting.value = false;
+  deleteConfirmation.value = "";
+  deleteError.value = "";
+}
+
+async function confirmDelete(): Promise<void> {
+  const contract = props.contract;
+  if (!contract || deleteConfirmation.value.trim() !== contract.contractNumber || deleteBusy.value) return;
+  deleteBusy.value = true;
+  deleteError.value = "";
+  try {
+    await api.delete<unknown>(`/contratos/${contract.id}`);
+    deleting.value = false;
+    emit("deleted", contract.id);
+  } catch (cause) {
+    deleteError.value = cause instanceof Error ? cause.message : "Não foi possível excluir o contrato.";
+  } finally {
+    deleteBusy.value = false;
+  }
 }
 </script>
 <template>
@@ -26,6 +64,7 @@ function onSaved(updated: Contract): void {
         <header>
           <div><span class="drawer-eyebrow">Contrato {{ contract.contractNumber }}</span><h2>{{ contract.supplier }}</h2></div>
           <div class="drawer-actions">
+            <button v-if="contract.canEdit" type="button" class="btn small danger-outline" @click="openDeleteConfirmation"><Trash2 class="size-3.5" />Excluir</button>
             <button v-if="contract.canEdit" type="button" class="btn small" @click="editing = true"><Pencil class="size-3.5" />Editar</button>
             <button class="drawer-close" aria-label="Fechar" @click="emit('close')"><X class="size-5" /></button>
           </div>
@@ -64,5 +103,32 @@ function onSaved(updated: Contract): void {
     </div>
     <ContractForm mode="edit" :contract="contract" :sectors="sectors" :open="editing" @close="editing = false" @saved="onSaved" />
     <EmailPreviewModal :open="previewing" :contract-id="contract?.id ?? null" @close="previewing = false" />
+    <AppModal :open="deleting" title="Excluir contrato" @close="closeDeleteConfirmation">
+      <div v-if="contract" class="delete-contract-confirmation">
+        <div class="delete-contract-warning">
+          <TriangleAlert class="size-5" />
+          <div>
+            <strong>Esta ação é permanente.</strong>
+            <p>O contrato {{ contract.contractNumber }} será removido das listas, do Kanban e dos indicadores do dashboard. O evento permanecerá registrado na auditoria.</p>
+          </div>
+        </div>
+        <label>
+          Digite <strong>{{ contract.contractNumber }}</strong> para confirmar
+          <input v-model="deleteConfirmation" :disabled="deleteBusy" autocomplete="off" @keyup.enter="confirmDelete" />
+        </label>
+        <p v-if="deleteError" class="form-error" role="alert">{{ deleteError }}</p>
+      </div>
+      <template #actions>
+        <button type="button" class="btn" :disabled="deleteBusy" @click="closeDeleteConfirmation">Cancelar</button>
+        <button
+          type="button"
+          class="btn danger-solid"
+          :disabled="deleteBusy || deleteConfirmation.trim() !== contract?.contractNumber"
+          @click="confirmDelete"
+        >
+          <Trash2 class="size-4" />{{ deleteBusy ? 'Excluindo...' : 'Excluir permanentemente' }}
+        </button>
+      </template>
+    </AppModal>
   </Teleport>
 </template>

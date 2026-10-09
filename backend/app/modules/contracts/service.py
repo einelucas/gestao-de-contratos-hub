@@ -379,6 +379,34 @@ async def update_contract(
     return await get_contract(session, item_id, current_user)
 
 
+async def delete_contract(
+    session: AsyncSession, contract_id: str, current_user: CurrentUser
+) -> None:
+    """Exclui um contrato e seus registros dependentes, preservando a auditoria."""
+    access = await sector_access(session, current_user)
+    item = await _load_contract(session, contract_id)
+    assert_can_view(access, item.sectorId)
+    assert_can_edit(access, item.sectorId)
+
+    previous_data = {
+        **_snapshot(item),
+        "contractNumber": item.contractNumber,
+        "supplierId": item.supplierId,
+        "createdAt": item.createdAt.isoformat(),
+        "updatedAt": item.updatedAt.isoformat(),
+    }
+    await record_audit(
+        session,
+        user_id=current_user.id,
+        action="contract.delete",
+        entity="Contract",
+        entity_id=item.id,
+        previous_data=previous_data,
+    )
+    await session.delete(item)
+    await session.commit()
+
+
 async def get_user_sector_permissions(session: AsyncSession, user_id: str) -> UserSectorPermissionsOut:
     if await session.get(User, user_id) is None:
         raise NotFoundError("Usuário não encontrado")

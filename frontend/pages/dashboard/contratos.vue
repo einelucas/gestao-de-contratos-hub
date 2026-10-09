@@ -55,6 +55,15 @@ function onContractUpdated(updated: Contract): void {
   selected.value = updated;
   void loadAttention();
 }
+function onContractDeleted(contractId: string): void {
+  const removed = contracts.value.find(contract => contract.id === contractId);
+  const index = contracts.value.findIndex(contract => contract.id === contractId);
+  if (index >= 0) contracts.value.splice(index, 1);
+  closeDetails();
+  void loadSectors();
+  void loadAttention();
+  showFlash(removed ? `Contrato ${removed.contractNumber} excluído.` : 'Contrato excluído.');
+}
 function onImported(count: number): void {
   selected.value = null;
   globalSearch.value = '';
@@ -113,7 +122,7 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
         </template>
       </section>
     </div>
-    <ContractDetailsDrawer :contract="selected" :sectors="sectors" @close="closeDetails" @updated="onContractUpdated" />
+    <ContractDetailsDrawer :contract="selected" :sectors="sectors" @close="closeDetails" @updated="onContractUpdated" @deleted="onContractDeleted" />
     <ContractForm mode="create" :sectors="sectors" :open="creating" @close="creating = false" @saved="onContractCreated" />
     <ContractImportModal :open="importing" :sectors="sectors" @close="importing = false" @imported="onImported" />
   </ModuleWorkspace>
