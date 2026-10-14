@@ -35,3 +35,7 @@ openapi.json
 # Dados reais de contratos (já carregados no banco): não versionar.
 backend/data/seed/*.csv
 docs/homologacao/login/11-localhost-viewer-contratos.png
+
+# Ambientes locais e cópias de trabalho
+.venv*/
+Nova pasta/

@@ -19,6 +19,15 @@ AuditStage = Literal[
     "FINALIZADO",
 ]
 
+RegularizationStage = Literal[
+    "aguardando_analise",
+    "chamados_elos",
+    "analise_interna",
+    "fornecedor_contatado",
+    "em_tratativa",
+    "em_finalizacao",
+]
+
 
 class SectorOut(CamelModel):
     id: str
@@ -57,6 +66,11 @@ class ContractOut(CamelModel):
     unit: str
     finalized: bool
     audit_stage: AuditStage | None
+    regularization_stage: RegularizationStage | None = None
+    regularization_responsible: str | None = None
+    regularization_deadline: date | None = None
+    regularization_notes: str | None = None
+    regularization_history: list[dict] = Field(default_factory=list)
     situation: str
     alert: str
     days_to_end: int | None
@@ -96,7 +110,9 @@ class AuditBoardOut(CamelModel):
 
 
 class SummaryKpisOut(CamelModel):
+    regularization_with_date: int = 0
     total: int
+    regularization: int = 0
     regular: int
     atencao: int
     vencido: int
@@ -120,6 +136,7 @@ class SummaryGroupOut(CamelModel):
     key: str
     label: str
     total: int
+    regularization: int = 0
     regular: int
     atencao: int
     vencido: int
@@ -134,6 +151,7 @@ class SummaryMonthOut(CamelModel):
     expiring: int
     overdue: int
     finalized: int
+    regularization: int = 0
     total_value: float
 
 
@@ -228,6 +246,10 @@ _NON_NULLABLE_UPDATE_FIELDS = frozenset({"finalized", "notify", "auto_renewal", 
 
 
 class ContractUpdateIn(CamelModel):
+    regularization_stage: RegularizationStage | None = None
+    regularization_responsible: str | None = Field(default=None, max_length=180)
+    regularization_deadline: date | None = None
+    regularization_notes: str | None = Field(default=None, max_length=10000)
     # Mudar o setor exige permissão de edição nos dois setores e uma equipe do novo setor.
     sector_id: str | None = None
     supplier: str | None = None

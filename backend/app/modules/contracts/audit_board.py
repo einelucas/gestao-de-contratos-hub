@@ -60,10 +60,14 @@ async def move_contract(
     if stage != FINALIZED and alert_without_finalization(item) != "Vencido":
         raise ConflictError("O contrato não está mais vencido")
 
+    regularization_before = service._snapshot(item)
     previous_stage = item.auditStage
     previous_finalized = item.finalized
     item.auditStage = stage
     item.finalized = stage == FINALIZED
+    if item.finalized:
+        item.regularizationStage = None
+    service._record_regularization_history(item, regularization_before, actor)
     await session.flush()
     await record_audit(
         session,

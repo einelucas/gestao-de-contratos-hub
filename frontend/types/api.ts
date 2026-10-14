@@ -23,7 +23,8 @@ export interface Sector {
 export type ContractCriticality = "BAIXA" | "MEDIA" | "ALTA";
 
 export type ContractSituation = "Vigente" | "Vencido" | "Sem data" | "Finalizado";
-export type ContractAlert = "Regular" | "Atencao" | "Vencido" | "SemData" | "Finalizado";
+export type RegularizationStage = "aguardando_analise" | "chamados_elos" | "analise_interna" | "fornecedor_contatado" | "em_tratativa" | "em_finalizacao";
+export type ContractAlert = "Regularizacao" | "Regular" | "Atencao" | "Vencido" | "SemData" | "Finalizado";
 export type AuditStage =
   | "AGUARDANDO_ANALISE"
   | "CHAMADO_ELES"
@@ -50,6 +51,11 @@ export interface Contract {
   unit: string;
   finalized: boolean;
   auditStage: AuditStage | null;
+  regularizationStage?: RegularizationStage | null;
+  regularizationResponsible?: string | null;
+  regularizationDeadline?: string | null;
+  regularizationNotes?: string | null;
+  regularizationHistory?: Array<{ date: string; user: string; previousStage: RegularizationStage | null; stage: RegularizationStage | null; responsible: string | null; deadline: string | null; notes: string | null }>;
   situation: ContractSituation;
   alert: ContractAlert;
   daysToEnd: number | null;
@@ -80,6 +86,10 @@ export interface AuditBoard {
 }
 
 export interface ContractUpdatePayload {
+  regularizationStage?: RegularizationStage | null;
+  regularizationResponsible?: string | null;
+  regularizationDeadline?: string | null;
+  regularizationNotes?: string | null;
   sectorId?: string;
   supplier?: string;
   serviceDescription?: string;
@@ -250,6 +260,7 @@ export interface SummaryGroup {
   key: string;
   label: string;
   total: number;
+  regularization?: number;
   regular: number;
   atencao: number;
   vencido: number;
@@ -259,7 +270,7 @@ export interface SummaryGroup {
 }
 
 export interface DeadlineBucket {
-  key: "overdue" | "today" | "next7" | "next30" | "next60" | "next90" | "later" | "withoutDate";
+  key: "regularization" | "overdue" | "today" | "next7" | "next30" | "next60" | "next90" | "later" | "withoutDate";
   label: string;
   count: number;
 }
@@ -271,7 +282,9 @@ export interface ContractSummary {
   sectorId: string | null;
   unit: string | null;
   kpis: {
+    regularizationWithDate?: number;
     total: number;
+    regularization?: number;
     regular: number;
     atencao: number;
     vencido: number;
@@ -285,7 +298,7 @@ export interface ContractSummary {
   byStatus: Array<{ key: ContractAlert; label: string; count: number; percent: number; totalValue: number }>;
   bySector: SummaryGroup[];
   byUnit: SummaryGroup[];
-  monthly: Array<{ month: string; label: string; expiring: number; overdue: number; finalized: number; totalValue: number }>;
+  monthly: Array<{ month: string; label: string; expiring: number; overdue: number; finalized: number; regularization?: number; totalValue: number }>;
   deadlines: DeadlineBucket[];
   overdue: { count: number; averageDays: number; maxDays: number };
   values: { hasValues: boolean; total: number; active: number; overdue: number; attention: number };
