@@ -11,7 +11,8 @@ const parts = computed(() => {
   return [
     { label: "Regulares", value: regular, color: "#609346" },
     { label: "Atenção", value: atencao, color: "#eaa239" },
-    { label: "Vencidos", value: vencido, color: "#c0392b" },
+    { label: "Em regularização", value: props.kpis.regularizationWithDate ?? 0, color: "#397ac1" },
+    { label: "Vencidos pendentes", value: vencido, color: "#c0392b" },
   ].map((part) => ({ ...part, width: (part.value / onTimeBase) * 100 }));
 });
 </script>

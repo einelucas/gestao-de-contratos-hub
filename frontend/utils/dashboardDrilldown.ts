@@ -35,6 +35,7 @@ export function filterByUnit(contracts: Contract[], unit: string, alert?: Contra
 
 /** Mesmos limites de `_DEADLINE_BUCKETS` em `backend/app/modules/contracts/summary.py`. */
 const DEADLINE_TESTS: Record<DeadlineBucket["key"], (item: Contract) => boolean> = {
+  regularization: (item) => item.alert === "Regularizacao",
   overdue: (item) => !item.finalized && item.daysToEnd !== null && item.daysToEnd < 0,
   today: (item) => !item.finalized && item.daysToEnd === 0,
   next7: (item) => !item.finalized && item.daysToEnd !== null && item.daysToEnd >= 1 && item.daysToEnd <= 7,
@@ -46,10 +47,10 @@ const DEADLINE_TESTS: Record<DeadlineBucket["key"], (item: Contract) => boolean>
 };
 
 export function filterByDeadlineBucket(contracts: Contract[], key: DeadlineBucket["key"]): Contract[] {
-  return contracts.filter(DEADLINE_TESTS[key]);
+  return contracts.filter(item => key === "regularization" ? item.alert === "Regularizacao" : item.alert !== "Regularizacao" && DEADLINE_TESTS[key](item));
 }
 
-export type MonthSegment = "upcoming" | "overdue" | "finalized";
+export type MonthSegment = "regularization" | "upcoming" | "overdue" | "finalized";
 
 /** `month` no formato `AAAA-MM`. */
 export function filterByMonth(contracts: Contract[], month: string, segment?: MonthSegment): Contract[] {
@@ -57,6 +58,7 @@ export function filterByMonth(contracts: Contract[], month: string, segment?: Mo
   if (!segment) return inMonth;
   if (segment === "finalized") return inMonth.filter((item) => item.finalized);
   const active = inMonth.filter((item) => !item.finalized);
+  if (segment === "regularization") return active.filter((item) => item.alert === "Regularizacao");
   if (segment === "overdue") return active.filter((item) => item.alert === "Vencido");
-  return active.filter((item) => item.alert !== "Vencido");
+  return active.filter((item) => item.alert !== "Vencido" && item.alert !== "Regularizacao");
 }
