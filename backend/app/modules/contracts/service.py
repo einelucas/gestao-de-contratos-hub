@@ -329,14 +329,13 @@ _UPDATE_MAPPING = {
 def _record_regularization_history(
     item: Contract, before: dict[str, Any], current_user: CurrentUser
 ) -> None:
-    after = _snapshot(item)
     tracked = (
         "regularizationStage",
         "regularizationResponsible",
         "regularizationDeadline",
         "regularizationNotes",
     )
-    if any(before[key] != after[key] for key in tracked):
+    if any(before[key] != _json_safe(getattr(item, key)) for key in tracked):
         item.regularizationHistory = [
             *(item.regularizationHistory or []),
             {
@@ -429,6 +428,8 @@ async def update_contract(
     # Registra também os efeitos automáticos da nova vigência no fluxo de auditoria.
     if before["auditStage"] != item.auditStage:
         audited_changes["auditStage"] = item.auditStage
+    if before["regularizationStage"] != item.regularizationStage:
+        audited_changes["regularizationStage"] = item.regularizationStage
     if before["finalized"] != item.finalized:
         audited_changes["finalized"] = item.finalized
     await record_audit(
