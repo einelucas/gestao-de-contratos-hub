@@ -64,6 +64,10 @@ async def move_contract(
     previous_finalized = item.finalized
     item.auditStage = stage
     item.finalized = stage == FINALIZED
+    if item.finalized and item.regularizationStage:
+        previous_regularization = item.regularizationStage
+        item.regularizationStage = None
+        service.append_regularization_history(item, previous_regularization, actor)
     await session.flush()
     await record_audit(
         session,

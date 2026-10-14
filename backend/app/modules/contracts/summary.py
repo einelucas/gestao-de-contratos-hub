@@ -8,8 +8,8 @@ mesmas regras de status (ATTENTION_DAYS = 20). Filtros:
 - `de` / `ate`: período do FIM DE VIGÊNCIA — com período, contratos sem data
   ficam de fora; sem período, a série mensal cobre 5 meses atrás a 6 à frente.
 
-"Em dia" = Regular + Atenção sobre os contratos ativos com data
-(Regular + Atenção + Vencido); finalizados e sem data não entram na base.
+"Em dia" usa a vigência real dos contratos ativos com data. Iniciar uma
+regularização não renova a vigência nem altera o histórico de vencimentos.
 """
 
 from __future__ import annotations
@@ -36,11 +36,12 @@ from app.modules.contracts.schemas import (
     SummaryValuesOut,
 )
 
-STATUS_ORDER = ("Regular", "Atencao", "Vencido", "Finalizado", "SemData")
+STATUS_ORDER = ("Regular", "Atencao", "Vencido", "Regularizacao", "Finalizado", "SemData")
 STATUS_LABEL = {
     "Regular": "Regulares",
     "Atencao": "Atenção",
-    "Vencido": "Vencidos",
+    "Vencido": "Vencidos pendentes",
+    "Regularizacao": "Em regularização",
     "Finalizado": "Finalizados",
     "SemData": "Sem data",
 }
@@ -88,6 +89,7 @@ def _group(items: list[ContractOut], key: Callable[[ContractOut], str]) -> list[
                 label=label or "Sem unidade",
                 total=len(members),
                 regular=counts["Regular"],
+                regularization=counts["Regularizacao"],
                 atencao=counts["Atencao"],
                 vencido=counts["Vencido"],
                 finalizado=counts["Finalizado"],
@@ -122,8 +124,10 @@ async def build_summary(
 
     total = len(items)
     counts = {status: sum(1 for item in items if item.alert == status) for status in STATUS_ORDER}
-    on_time = counts["Regular"] + counts["Atencao"]
-    on_time_base = on_time + counts["Vencido"]
+    on_time = sum(
+        1 for item in items if not item.finalized and item.end_date is not None and item.end_date >= today
+    )
+    on_time_base = sum(1 for item in items if not item.finalized and item.end_date is not None)
 
     by_status = [
         StatusCountOut(
@@ -152,6 +156,7 @@ async def build_summary(
                 label=f"{_MONTH_ABBR[cursor.month - 1]}/{cursor.strftime('%y')}",
                 expiring=len(active),
                 overdue=sum(1 for item in active if item.alert == "Vencido"),
+                regularization=sum(1 for item in active if item.alert == "Regularizacao"),
                 finalized=len(in_month) - len(active),
                 total_value=_money(active),
             )
@@ -163,7 +168,11 @@ async def build_summary(
         DeadlineBucketOut(
             key=key,
             label=label,
-            count=sum(1 for item in open_items if item.days_to_end is not None and test(item.days_to_end)),
+            count=sum(
+                1
+                for item in open_items
+                if item.alert != "Regularizacao" and item.days_to_end is not None and test(item.days_to_end)
+            ),
         )
         for key, label, test in _DEADLINE_BUCKETS
     ]
@@ -171,10 +180,13 @@ async def build_summary(
         DeadlineBucketOut(
             key="withoutDate",
             label="Sem data",
-            count=sum(1 for item in open_items if item.days_to_end is None),
+            count=sum(1 for item in open_items if item.alert != "Regularizacao" and item.days_to_end is None),
         )
     )
 
+    deadlines.append(
+        DeadlineBucketOut(key="regularization", label="Em regularização", count=counts["Regularizacao"])
+    )
     overdue_days = [-(item.days_to_end or 0) for item in items if item.alert == "Vencido"]
     total_value = _money(items)
 
@@ -185,8 +197,12 @@ async def build_summary(
         sector_id=sector_id,
         unit=unit,
         kpis=SummaryKpisOut(
+            regularization_with_date=sum(
+                1 for item in items if item.alert == "Regularizacao" and item.end_date is not None
+            ),
             total=total,
             regular=counts["Regular"],
+            regularization=counts["Regularizacao"],
             atencao=counts["Atencao"],
             vencido=counts["Vencido"],
             finalizado=counts["Finalizado"],

@@ -83,7 +83,7 @@ watch(exportTrigger, () => {
 const suppliers = computed(() => ['Todos', ...Array.from(new Set(contracts.value.map(c => c.supplier))).sort((a,b)=>a.localeCompare(b,'pt-BR'))]);
 const units = computed(() => ['Todas', ...Array.from(new Set(contracts.value.map(c => c.unit).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pt-BR'))]);
 const baseFiltered = computed(() => contracts.value.filter(c => { const q=globalSearch.value.trim().toLowerCase(); return (!q || c.supplier.toLowerCase().includes(q) || c.contractNumber.toLowerCase().startsWith(q)) && (supplier.value==='Todos'||c.supplier===supplier.value) && (unit.value==='Todas'||c.unit===unit.value) && (situation.value==='Todos'||c.situation===situation.value); }));
-const kpis = computed(() => ({ total: baseFiltered.value.length, vencido: baseFiltered.value.filter(c=>c.alert==='Vencido').length, atencao: baseFiltered.value.filter(c=>c.alert==='Atencao').length, regular: baseFiltered.value.filter(c=>c.alert==='Regular').length, finalizado: baseFiltered.value.filter(c=>c.alert==='Finalizado').length }));
+const kpis = computed(() => ({ total: baseFiltered.value.length, regularization: baseFiltered.value.filter(c=>c.alert==='Regularizacao').length, vencido: baseFiltered.value.filter(c=>c.alert==='Vencido').length, atencao: baseFiltered.value.filter(c=>c.alert==='Atencao').length, regular: baseFiltered.value.filter(c=>c.alert==='Regular').length, finalizado: baseFiltered.value.filter(c=>c.alert==='Finalizado').length }));
 const filtered = computed(() => sortContracts(baseFiltered.value.filter(c => statusFilter.value==='Todos' || c.alert===statusFilter.value), sortMode.value));
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / perPage.value)));
 const pageItems = computed(() => filtered.value.slice((page.value-1)*perPage.value, page.value*perPage.value));
@@ -98,7 +98,8 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
         <ContractKpiCard label="Total de contratos" :value="kpis.total" :active="statusFilter==='Todos'" tone="default" :icon="FileText" @click="statusFilter='Todos'" />
         <ContractKpiCard label="Regulares" :value="kpis.regular" :active="statusFilter==='Regular'" tone="good" :icon="CircleCheck" @click="setStatus('Regular')" />
         <ContractKpiCard label="Atenção · 20 dias" :value="kpis.atencao" :active="statusFilter==='Atencao'" tone="default" :icon="TriangleAlert" class="attention" @click="setStatus('Atencao')" />
-        <ContractKpiCard label="Vencidos" :value="kpis.vencido" :active="statusFilter==='Vencido'" tone="bad" :icon="CalendarX" @click="setStatus('Vencido')" />
+        <ContractKpiCard label="Em regularização" :value="kpis.regularization" :active="statusFilter==='Regularizacao'" tone="default" :icon="FileText" @click="setStatus('Regularizacao')" />
+        <ContractKpiCard label="Vencidos pendentes" :value="kpis.vencido" :active="statusFilter==='Vencido'" tone="bad" :icon="CalendarX" @click="setStatus('Vencido')" />
         <ContractKpiCard label="Finalizados" :value="kpis.finalizado" :active="statusFilter==='Finalizado'" tone="default" :icon="CheckCheck" @click="setStatus('Finalizado')" />
       </section>
 
@@ -127,3 +128,9 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
     <ContractImportModal :open="importing" :sectors="sectors" @close="importing = false" @imported="onImported" />
   </ModuleWorkspace>
 </template>
+
+<style scoped>
+@media (min-width: 1160px) {
+  .contract-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+</style>
