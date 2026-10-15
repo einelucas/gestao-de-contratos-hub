@@ -111,7 +111,7 @@ async function confirmDelete(): Promise<void> {
               Criticidade {{ CRITICALITY_LABEL[contract.criticality] }}
             </span>
           </div>
-          <section><h3>Vigência</h3><div class="detail-grid"><div><span>Início</span><strong>{{ dateBr(contract.startDate) }}</strong></div><div><span>Fim</span><strong>{{ dateBr(contract.endDate) }}</strong></div><div><span>Dias para vencer</span><strong>{{ daysToEndLabel(contract.daysToEnd) }}</strong></div><div><span>Renovação automática</span><strong>{{ contract.autoRenewal ? 'Sim' : 'Não' }}</strong></div></div></section>
+          <section><h3>Vigência</h3><div class="detail-grid"><div><span>Início</span><strong>{{ dateBr(contract.startDate) }}</strong></div><div><span>Fim original</span><strong>{{ dateBr(contract.endDate) }}</strong></div><div v-if="contract.dilation"><span>Dilação até</span><strong>{{ dateBr(contract.dilationEndDate) }}</strong></div><div><span>Fim efetivo</span><strong>{{ dateBr(contract.effectiveEndDate) }}</strong></div><div><span>Dias para vencer</span><strong>{{ daysToEndLabel(contract.daysToEnd) }}</strong></div><div><span>Renovação automática</span><strong>{{ contract.autoRenewal ? 'Sim' : 'Não' }}</strong></div></div></section>
           <section>
             <h3 class="with-icon">
               <component :is="contract.notify ? BellRing : BellOff" class="size-4" />

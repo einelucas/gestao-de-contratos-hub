@@ -64,7 +64,11 @@ from app.modules.contract_alerts.schemas import (
 from app.modules.contract_alerts.templates import render_alert
 from app.modules.contracts import service as contracts_service
 from app.modules.contracts.access import assert_can_view, sector_access
-from app.modules.contracts.rules import contracts_today
+from app.modules.contracts.rules import (
+    contracts_today,
+    effective_end_date,
+    is_effectively_finalized,
+)
 from app.modules.notification_teams.service import active_recipients, recipients_problem
 
 logger = get_logger("app.contract_alerts")
@@ -104,6 +108,16 @@ class ContractView:
 
 def _view(contract: Contract) -> ContractView:
     team = contract.notificationTeam
+    effective_end = effective_end_date(
+        end_date=contract.endDate,
+        dilation=contract.dilation,
+        dilation_end_date=contract.dilationEndDate,
+    )
+    effective_finalized = is_effectively_finalized(
+        finalized=contract.finalized,
+        dilation=contract.dilation,
+        dilation_end_date=contract.dilationEndDate,
+    )
     return ContractView(
         id=contract.id,
         number=contract.contractNumber,
@@ -111,8 +125,8 @@ def _view(contract: Contract) -> ContractView:
         sector=contract.sector.name,
         unit=contract.unit,
         notify=contract.notify,
-        finalized=contract.finalized,
-        end_date=contract.endDate,
+        finalized=effective_finalized,
+        end_date=effective_end,
         auto_renewal=contract.autoRenewal,
         recipients=tuple(active_recipients(team)),
         recipients_problem=recipients_problem(team),
@@ -945,7 +959,7 @@ async def attention_contracts(session: AsyncSession, actor: CurrentUser) -> Atte
             sector_name=c.sector_name,
             unit=c.unit,
             alert=c.alert,
-            end_date=c.end_date,
+            end_date=c.effective_end_date,
             days_to_end=c.days_to_end,
             message=attention_message(c.alert, c.days_to_end),
             notify=c.notify,

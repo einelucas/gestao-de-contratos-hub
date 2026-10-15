@@ -13,9 +13,10 @@ const lateDays = computed(() => overdueDays(props.contract));
       <ContractStatusBadge :alert="contract.alert" :situation="contract.situation" />
     </div>
     <p class="contract-service">{{ contract.serviceDescription || 'Prestação não informada' }}</p>
+    <p v-if="contract.dilation" class="form-hint">Dilação até {{ dateBr(contract.dilationEndDate) }}</p>
     <div class="contract-card-meta">
       <span><Building2 class="size-4" />{{ contract.unit || 'Sem unidade' }}</span>
-      <span><CalendarDays class="size-4" />{{ dateBr(contract.endDate) }}</span>
+      <span><CalendarDays class="size-4" />{{ dateBr(contract.effectiveEndDate ?? contract.endDate) }}</span>
       <span><FileText class="size-4" />{{ money(contract.totalValue) }}</span>
       <span v-if="lateDays !== null" class="contract-overdue"><AlarmClock class="size-4" />{{ overdueLabel(lateDays) }}</span>
     </div>
