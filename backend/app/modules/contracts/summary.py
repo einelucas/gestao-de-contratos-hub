@@ -125,9 +125,17 @@ async def build_summary(
     total = len(items)
     counts = {status: sum(1 for item in items if item.alert == status) for status in STATUS_ORDER}
     on_time = sum(
-        1 for item in items if not item.finalized and item.end_date is not None and item.end_date >= today
+        1
+        for item in items
+        if not item.effective_finalized
+        and item.effective_end_date is not None
+        and item.effective_end_date >= today
     )
-    on_time_base = sum(1 for item in items if not item.finalized and item.end_date is not None)
+    on_time_base = sum(
+        1
+        for item in items
+        if not item.effective_finalized and item.effective_end_date is not None
+    )
 
     by_status = [
         StatusCountOut(
@@ -200,7 +208,9 @@ async def build_summary(
         unit=unit,
         kpis=SummaryKpisOut(
             regularization_with_date=sum(
-                1 for item in items if item.alert == "Regularizacao" and item.end_date is not None
+                1
+                for item in items
+                if item.alert == "Regularizacao" and item.effective_end_date is not None
             ),
             total=total,
             regular=counts["Regular"],
