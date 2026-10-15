@@ -1,7 +1,7 @@
 """Workspace colaborativo da auditoria.
 
-Revision ID: 0010_audit_workspace
-Revises: 0009_contract_audit_stage
+Revision ID: 0011_audit_workspace
+Revises: 0010_contract_dilation
 Create Date: 2026-10-14
 """
 
@@ -12,8 +12,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "0010_audit_workspace"
-down_revision: str | None = "0009_contract_audit_stage"
+revision: str = "0011_audit_workspace"
+down_revision: str | None = "0010_contract_dilation"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
