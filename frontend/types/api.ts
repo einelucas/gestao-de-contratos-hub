@@ -50,6 +50,10 @@ export interface Contract {
   endDate: string | null;
   unit: string;
   finalized: boolean;
+  dilation: boolean;
+  dilationEndDate: string | null;
+  effectiveEndDate: string | null;
+  effectiveFinalized: boolean;
   auditStage: AuditStage | null;
   auditStageEnteredAt?: string | null;
   regularizationStage?: RegularizationStage | null;
@@ -150,6 +154,8 @@ export interface ContractUpdatePayload {
   endDate?: string | null;
   unit?: string;
   finalized?: boolean;
+  dilation?: boolean;
+  dilationEndDate?: string | null;
   notify?: boolean;
   notificationTeamId?: string | null;
   autoRenewal?: boolean;

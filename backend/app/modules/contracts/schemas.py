@@ -65,6 +65,10 @@ class ContractOut(CamelModel):
     end_date: date | None
     unit: str
     finalized: bool
+    dilation: bool
+    dilation_end_date: date | None
+    effective_end_date: date | None
+    effective_finalized: bool
     audit_stage: AuditStage | None
     audit_stage_entered_at: datetime | None = None
     regularization_stage: RegularizationStage | None = None
@@ -281,6 +285,8 @@ class ContractCreateIn(CamelModel):
     end_date: date | None = None
     unit: str = ""
     finalized: bool = False
+    dilation: bool = False
+    dilation_end_date: date | None = None
     notify: bool = False
     # Equipe de notificação do mesmo setor; obrigatória (com membros ativos) quando notify=true.
     notification_team_id: str | None = None
@@ -296,7 +302,9 @@ class ContractCreateIn(CamelModel):
 
 
 # Campos que não aceitam `null` explícito no PATCH (colunas NOT NULL).
-_NON_NULLABLE_UPDATE_FIELDS = frozenset({"finalized", "notify", "auto_renewal", "sector_id", "supplier"})
+_NON_NULLABLE_UPDATE_FIELDS = frozenset(
+    {"finalized", "dilation", "notify", "auto_renewal", "sector_id", "supplier"}
+)
 
 
 class ContractUpdateIn(CamelModel):
@@ -316,6 +324,8 @@ class ContractUpdateIn(CamelModel):
     end_date: date | None = None
     unit: str | None = None
     finalized: bool | None = None
+    dilation: bool | None = None
+    dilation_end_date: date | None = None
     notify: bool | None = None
     # `null` explícito remove a equipe; campo ausente mantém a atual.
     notification_team_id: str | None = None

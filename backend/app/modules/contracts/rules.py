@@ -16,13 +16,55 @@ def contracts_today() -> date:
     return datetime.now(CONTRACTS_TIMEZONE).date()
 
 
-def derive_situation(*, finalized: bool, end_date: date | None, today: date | None = None) -> str:
+def effective_end_date(
+    *,
+    end_date: date | None,
+    dilation: bool = False,
+    dilation_end_date: date | None = None,
+) -> date | None:
+    if dilation and dilation_end_date is not None:
+        return dilation_end_date
+    return end_date
+
+
+def is_effectively_finalized(
+    *,
+    finalized: bool,
+    dilation: bool = False,
+    dilation_end_date: date | None = None,
+    today: date | None = None,
+) -> bool:
     today = today or contracts_today()
     if finalized:
+        return True
+    # A data da dilação é inclusiva: no dia final ainda está vigente; no dia seguinte, finalizado.
+    return bool(dilation and dilation_end_date is not None and dilation_end_date < today)
+
+
+def derive_situation(
+    *,
+    finalized: bool,
+    end_date: date | None,
+    dilation: bool = False,
+    dilation_end_date: date | None = None,
+    today: date | None = None,
+) -> str:
+    today = today or contracts_today()
+    if is_effectively_finalized(
+        finalized=finalized,
+        dilation=dilation,
+        dilation_end_date=dilation_end_date,
+        today=today,
+    ):
         return "Finalizado"
-    if end_date is None:
+    effective_end = effective_end_date(
+        end_date=end_date,
+        dilation=dilation,
+        dilation_end_date=dilation_end_date,
+    )
+    if effective_end is None:
         return "Sem data"
-    if end_date < today:
+    if effective_end < today:
         return "Vencido"
     return "Vigente"
 

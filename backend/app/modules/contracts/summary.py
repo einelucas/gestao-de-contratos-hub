@@ -117,17 +117,25 @@ async def build_summary(
         items = [
             item
             for item in items
-            if item.end_date is not None
-            and (date_from is None or item.end_date >= date_from)
-            and (date_to is None or item.end_date <= date_to)
+            if item.effective_end_date is not None
+            and (date_from is None or item.effective_end_date >= date_from)
+            and (date_to is None or item.effective_end_date <= date_to)
         ]
 
     total = len(items)
     counts = {status: sum(1 for item in items if item.alert == status) for status in STATUS_ORDER}
     on_time = sum(
-        1 for item in items if not item.finalized and item.end_date is not None and item.end_date >= today
+        1
+        for item in items
+        if not item.effective_finalized
+        and item.effective_end_date is not None
+        and item.effective_end_date >= today
     )
-    on_time_base = sum(1 for item in items if not item.finalized and item.end_date is not None)
+    on_time_base = sum(
+        1
+        for item in items
+        if not item.effective_finalized and item.effective_end_date is not None
+    )
 
     by_status = [
         StatusCountOut(
@@ -147,9 +155,11 @@ async def build_summary(
     cursor = start
     while cursor <= end and len(months) < 60:
         in_month = [
-            item for item in items if item.end_date is not None and _month_start(item.end_date) == cursor
+            item
+            for item in items
+            if item.effective_end_date is not None and _month_start(item.effective_end_date) == cursor
         ]
-        active = [item for item in in_month if not item.finalized]
+        active = [item for item in in_month if not item.effective_finalized]
         months.append(
             SummaryMonthOut(
                 month=cursor.strftime("%Y-%m"),
@@ -163,7 +173,7 @@ async def build_summary(
         )
         cursor = _add_months(cursor, 1)
 
-    open_items = [item for item in items if not item.finalized]
+    open_items = [item for item in items if not item.effective_finalized]
     deadlines = [
         DeadlineBucketOut(
             key=key,
@@ -198,7 +208,9 @@ async def build_summary(
         unit=unit,
         kpis=SummaryKpisOut(
             regularization_with_date=sum(
-                1 for item in items if item.alert == "Regularizacao" and item.end_date is not None
+                1
+                for item in items
+                if item.alert == "Regularizacao" and item.effective_end_date is not None
             ),
             total=total,
             regular=counts["Regular"],

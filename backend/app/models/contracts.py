@@ -121,6 +121,9 @@ class Contract(Base):
     endDate: Mapped[date | None] = mapped_column(Date, nullable=True)
     unit: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     finalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Dilação contratual: preserva o fim original e usa uma nova data efetiva.
+    dilation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dilationEndDate: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Etapa do fluxo de auditoria. Nulo mantém o contrato fora do Kanban.
     auditStage: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Início da etapa atual, usado para medir gargalos sem depender do navegador.
@@ -169,6 +172,7 @@ class Contract(Base):
         Index("Contract_sectorId_idx", "sectorId"),
         Index("Contract_supplierId_idx", "supplierId"),
         Index("Contract_endDate_idx", "endDate"),
+        Index("Contract_dilationEndDate_idx", "dilationEndDate"),
         Index("Contract_unit_idx", "unit"),
         Index("Contract_auditStage_idx", "auditStage"),
         Index("Contract_responsibleUserId_idx", "responsibleUserId"),

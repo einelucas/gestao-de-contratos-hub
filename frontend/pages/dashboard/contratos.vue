@@ -98,7 +98,6 @@ function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value
         <ContractKpiCard label="Total de contratos" :value="kpis.total" :active="statusFilter==='Todos'" tone="default" :icon="FileText" @click="statusFilter='Todos'" />
         <ContractKpiCard label="Regulares" :value="kpis.regular" :active="statusFilter==='Regular'" tone="good" :icon="CircleCheck" @click="setStatus('Regular')" />
         <ContractKpiCard label="Atenção · 20 dias" :value="kpis.atencao" :active="statusFilter==='Atencao'" tone="default" :icon="TriangleAlert" class="attention" @click="setStatus('Atencao')" />
-        <ContractKpiCard label="Em regularização" :value="kpis.regularization" :active="statusFilter==='Regularizacao'" tone="default" :icon="FileText" @click="setStatus('Regularizacao')" />
         <ContractKpiCard label="Vencidos pendentes" :value="kpis.vencido" :active="statusFilter==='Vencido'" tone="bad" :icon="CalendarX" @click="setStatus('Vencido')" />
         <ContractKpiCard label="Finalizados" :value="kpis.finalizado" :active="statusFilter==='Finalizado'" tone="default" :icon="CheckCheck" @click="setStatus('Finalizado')" />
       </section>
