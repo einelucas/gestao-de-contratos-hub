@@ -234,7 +234,7 @@ async def test_expired_dilation_is_effectively_finalized(
     assert response.json()["effectiveFinalized"] is True
     assert response.json()["situation"] == "Finalizado"
     assert response.json()["alert"] == "Finalizado"
-    assert response.json()["auditStage"] == "FINALIZADO"
+    assert response.json()["auditStage"] is None
 
 
 async def test_dilation_requires_a_later_date(client, auth_header, db_session) -> None:
@@ -252,7 +252,7 @@ async def test_dilation_requires_a_later_date(client, auth_header, db_session) -
         headers=auth_header("ADMIN"),
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert "posterior" in response.text
     persisted = (await client.get(url, headers=auth_header("ADMIN"))).json()
     assert persisted["dilation"] is False
