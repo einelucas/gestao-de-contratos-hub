@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
@@ -14,6 +16,9 @@ from app.modules.contracts import audit_board, import_service, overdue_history, 
 from app.modules.contracts.schemas import (
     AuditBoardMoveIn,
     AuditBoardOut,
+    AuditUpdateEditIn,
+    AuditUpdateOut,
+    AuditWorkspaceOut,
     ContractCreateIn,
     ContractListOut,
     ContractOut,
@@ -102,7 +107,8 @@ async def modelo_importacao(
     output = io.StringIO()
     csv.writer(output, delimiter=";").writerow(import_service.HEADERS)
     return Response(
-        content="\ufeff" + output.getvalue(), media_type="text/csv; charset=utf-8",
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="modelo-importacao-contratos.csv"'},
     )
 
@@ -184,6 +190,77 @@ async def mover_contrato_auditoria(
     current_user: CurrentUser = Depends(require_user),
 ) -> ContractOut:
     return await audit_board.move_contract(session, contract_id, body.stage, current_user)
+
+
+@router.get("/contratos/{contract_id}/auditoria/workspace", response_model=AuditWorkspaceOut)
+async def workspace_auditoria(
+    contract_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> AuditWorkspaceOut:
+    return await audit_board.get_workspace(session, contract_id, current_user)
+
+
+@router.post(
+    "/contratos/{contract_id}/auditoria/atualizacoes",
+    response_model=AuditUpdateOut,
+    status_code=201,
+)
+async def publicar_atualizacao_auditoria(
+    contract_id: str,
+    text: str = Form(default=""),
+    mentioned_user_ids: str = Form(default="[]", alias="mentionedUserIds"),
+    files: list[UploadFile] | None = File(default=None),
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> AuditUpdateOut:
+    try:
+        parsed_mentions = json.loads(mentioned_user_ids)
+    except json.JSONDecodeError as exc:
+        from app.core.errors import DomainError
+
+        raise DomainError("Lista de menções inválida") from exc
+    if not isinstance(parsed_mentions, list) or not all(isinstance(value, str) for value in parsed_mentions):
+        from app.core.errors import DomainError
+
+        raise DomainError("Lista de menções inválida")
+    return await audit_board.create_update(
+        session, contract_id, current_user, text, parsed_mentions, files or []
+    )
+
+
+@router.patch("/contratos/auditoria/atualizacoes/{update_id}", response_model=AuditUpdateOut)
+async def editar_atualizacao_auditoria(
+    update_id: str,
+    body: AuditUpdateEditIn,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> AuditUpdateOut:
+    return await audit_board.edit_update(session, update_id, body, current_user)
+
+
+@router.delete("/contratos/auditoria/atualizacoes/{update_id}", status_code=204)
+async def excluir_atualizacao_auditoria(
+    update_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> Response:
+    await audit_board.delete_update(session, update_id, current_user)
+    return Response(status_code=204)
+
+
+@router.get("/contratos/auditoria/anexos/{attachment_id}")
+async def baixar_anexo_auditoria(
+    attachment_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_user),
+) -> Response:
+    item = await audit_board.get_attachment(session, attachment_id, current_user)
+    return Response(
+        content=item.data,
+        media_type=item.contentType,
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(item.name)}"},
+    )
 
 
 @router.get("/responsaveis", response_model=ResponsibleListOut)

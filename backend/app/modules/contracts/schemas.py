@@ -66,6 +66,7 @@ class ContractOut(CamelModel):
     unit: str
     finalized: bool
     audit_stage: AuditStage | None
+    audit_stage_entered_at: datetime | None = None
     regularization_stage: RegularizationStage | None = None
     regularization_responsible: str | None = None
     regularization_deadline: date | None = None
@@ -107,6 +108,59 @@ class AuditBoardMoveIn(CamelModel):
 class AuditBoardOut(CamelModel):
     items: list[ContractOut]
     units: list[str]
+    users: list[AuditUserOut] = Field(default_factory=list)
+    current_user_id: str
+
+
+class AuditUserOut(CamelModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    active: bool
+
+
+class AuditAttachmentOut(CamelModel):
+    id: str
+    name: str
+    size: int
+    type: str
+    url: str
+
+
+class AuditUpdateOut(CamelModel):
+    id: str
+    contract_id: str
+    text: str
+    author: str
+    author_id: str | None
+    mentioned_user_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    can_edit: bool
+    attachments: list[AuditAttachmentOut] = Field(default_factory=list)
+
+
+class AuditActivityOut(CamelModel):
+    id: str
+    contract_id: str
+    type: str
+    message: str
+    user_id: str | None
+    user_name: str
+    from_stage: AuditStage | None = None
+    to_stage: AuditStage | None = None
+    created_at: datetime
+
+
+class AuditWorkspaceOut(CamelModel):
+    updates: list[AuditUpdateOut] = Field(default_factory=list)
+    activity: list[AuditActivityOut] = Field(default_factory=list)
+
+
+class AuditUpdateEditIn(CamelModel):
+    text: str = Field(min_length=1, max_length=10000)
+    mentioned_user_ids: list[str] = Field(default_factory=list)
 
 
 class SummaryKpisOut(CamelModel):

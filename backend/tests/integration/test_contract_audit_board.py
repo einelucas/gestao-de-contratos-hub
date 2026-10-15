@@ -42,10 +42,13 @@ async def test_overdue_contract_enters_awaiting_analysis_automatically(
     response = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
 
     assert response.status_code == 200
-    assert response.json()["units"] == ["Balsas"]
+    assert response.json()["units"] == ["Balsas", "LEM"]
     assert [(item["id"], item["auditStage"]) for item in response.json()["items"]] == [
-        (ids["overdue"], "AGUARDANDO_ANALISE")
+        (ids["overdue"], "AGUARDANDO_ANALISE"),
+        (ids["regular"], None),
     ]
+    assert response.json()["currentUserId"]
+    assert response.json()["users"]
 
 
 async def test_moving_to_finalized_updates_contract_and_moving_back_reopens_it(
@@ -76,7 +79,7 @@ async def test_moving_to_finalized_updates_contract_and_moving_back_reopens_it(
     assert reopened.json()["auditStage"] == "EM_FINALIZACAO"
 
 
-async def test_extending_deadline_reopens_contract_and_removes_it_from_board(
+async def test_extending_deadline_reopens_contract_and_returns_it_to_backlog(
     client, auth_header, db_session
 ) -> None:
     ids = await _seed(db_session)
@@ -95,7 +98,48 @@ async def test_extending_deadline_reopens_contract_and_removes_it_from_board(
     assert extended.json()["finalized"] is False
     assert extended.json()["alert"] == "Regular"
     assert extended.json()["auditStage"] is None
-    assert board.json()["items"] == []
+    renewed = next(item for item in board.json()["items"] if item["id"] == ids["overdue"])
+    assert renewed["auditStage"] is None
+
+
+async def test_regular_contract_can_start_audit_and_workspace_is_persisted(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    move = await client.patch(
+        f"/api/v1/contratos/{ids['regular']}/auditoria",
+        json={"stage": "AGUARDANDO_ANALISE"},
+        headers=auth_header("ADMIN"),
+    )
+    assert move.status_code == 200, move.text
+    assert move.json()["auditStage"] == "AGUARDANDO_ANALISE"
+    assert move.json()["auditStageEnteredAt"]
+
+    update = await client.post(
+        f"/api/v1/contratos/{ids['regular']}/auditoria/atualizacoes",
+        data={"text": "Validar documento com @Dev Admin", "mentionedUserIds": "[]"},
+        files={"files": ("evidencia.txt", b"conteudo", "text/plain")},
+        headers=auth_header("ADMIN"),
+    )
+    assert update.status_code == 201, update.text
+    assert update.json()["text"] == "Validar documento com @Dev Admin"
+    assert update.json()["attachments"][0]["name"] == "evidencia.txt"
+
+    workspace = await client.get(
+        f"/api/v1/contratos/{ids['regular']}/auditoria/workspace",
+        headers=auth_header("ADMIN"),
+    )
+    assert workspace.status_code == 200
+    assert len(workspace.json()["updates"]) == 1
+    assert [event["type"] for event in workspace.json()["activity"]] == ["FILE", "STAGE"]
+
+    attachment_id = workspace.json()["updates"][0]["attachments"][0]["id"]
+    attachment = await client.get(
+        f"/api/v1/contratos/auditoria/anexos/{attachment_id}",
+        headers=auth_header("ADMIN"),
+    )
+    assert attachment.status_code == 200
+    assert attachment.content == b"conteudo"
 
 
 async def test_board_and_moves_respect_sector_permissions(client, auth_header, db_session) -> None:
