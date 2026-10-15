@@ -3,6 +3,9 @@
 from app.models.audit import AuditLog
 from app.models.contracts import (
     Contract,
+    ContractAuditActivity,
+    ContractAuditAttachment,
+    ContractAuditUpdate,
     ContractNotification,
     NotificationTeam,
     NotificationTeamMember,
@@ -20,6 +23,9 @@ __all__ = [
     "User",
     "Verification",
     "Contract",
+    "ContractAuditActivity",
+    "ContractAuditAttachment",
+    "ContractAuditUpdate",
     "ContractNotification",
     "NotificationTeam",
     "NotificationTeamMember",

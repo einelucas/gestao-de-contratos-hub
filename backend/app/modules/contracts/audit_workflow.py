@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.models.common import utcnow
 from app.models.contracts import Contract
 from app.modules.contracts.rules import derive_alert, derive_situation
 
@@ -15,24 +16,32 @@ def alert_without_finalization(item: Contract) -> str:
 
 
 def sync_contract_audit_stage(item: Contract, *, deadline_changed: bool = False) -> None:
-    """Mantém o Kanban coerente com vigência e finalização do contrato."""
+    """Mantém entrada automática de vencidos sem apagar o fluxo manual.
+
+    A Auditoria passou a aceitar todos os contratos. Por isso uma renovação de
+    vigência não pode mais remover silenciosamente uma etapa escolhida pelo time.
+    """
     underlying_alert = alert_without_finalization(item)
 
-    # Alterar manualmente a vigência para uma data não vencida reabre o contrato,
-    # devolve seu status calculado (Regular/Atenção/Sem data) e o remove do fluxo.
     if deadline_changed and underlying_alert != "Vencido":
         item.finalized = False
         item.auditStage = None
+        item.auditStageEnteredAt = None
         return
 
     if item.auditStage is None:
         if not item.finalized and underlying_alert == "Vencido":
             item.auditStage = AWAITING_ANALYSIS
+            item.auditStageEnteredAt = utcnow()
         return
 
+    if item.auditStageEnteredAt is None:
+        item.auditStageEnteredAt = utcnow()
+
     if item.finalized:
-        item.auditStage = FINALIZED
-    elif underlying_alert != "Vencido":
-        item.auditStage = None
+        if item.auditStage != FINALIZED:
+            item.auditStage = FINALIZED
+            item.auditStageEnteredAt = utcnow()
     elif item.auditStage == FINALIZED:
         item.auditStage = AWAITING_ANALYSIS
+        item.auditStageEnteredAt = utcnow()

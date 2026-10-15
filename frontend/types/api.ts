@@ -51,6 +51,7 @@ export interface Contract {
   unit: string;
   finalized: boolean;
   auditStage: AuditStage | null;
+  auditStageEnteredAt?: string | null;
   regularizationStage?: RegularizationStage | null;
   regularizationResponsible?: string | null;
   regularizationDeadline?: string | null;
@@ -83,6 +84,54 @@ export interface Contract {
 export interface AuditBoard {
   items: Contract[];
   units: string[];
+  users: AuditUser[];
+  currentUserId: string;
+}
+
+export interface AuditUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+}
+
+export interface AuditAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  url: string;
+}
+
+export interface AuditUpdate {
+  id: string;
+  contractId: string;
+  text: string;
+  author: string;
+  authorId: string | null;
+  mentionedUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  canEdit: boolean;
+  attachments: AuditAttachment[];
+}
+
+export interface AuditActivity {
+  id: string;
+  contractId: string;
+  type: "STAGE" | "COMMENT" | "FILE" | "RESPONSIBLE" | "PRIORITY";
+  message: string;
+  userId: string | null;
+  userName: string;
+  fromStage?: AuditStage | null;
+  toStage?: AuditStage | null;
+  createdAt: string;
+}
+
+export interface AuditWorkspace {
+  updates: AuditUpdate[];
+  activity: AuditActivity[];
 }
 
 export interface ContractUpdatePayload {

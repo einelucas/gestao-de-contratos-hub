@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -122,6 +123,8 @@ class Contract(Base):
     finalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Etapa do fluxo de auditoria. Nulo mantém o contrato fora do Kanban.
     auditStage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Início da etapa atual, usado para medir gargalos sem depender do navegador.
+    auditStageEnteredAt: Mapped[datetime | None] = mapped_column(Timestamp3, nullable=True)
     regularizationStage: Mapped[str | None] = mapped_column(String(40), nullable=True)
     regularizationResponsible: Mapped[str | None] = mapped_column(String(180), nullable=True)
     regularizationDeadline: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -153,6 +156,12 @@ class Contract(Base):
     supplier: Mapped[Supplier] = relationship(back_populates="contracts")
     responsibleUser: Mapped[User | None] = relationship("User")
     notificationTeam: Mapped[NotificationTeam | None] = relationship("NotificationTeam")
+    auditUpdates: Mapped[list[ContractAuditUpdate]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan"
+    )
+    auditActivities: Mapped[list[ContractAuditActivity]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint("sectorId", "contractNumber", name="Contract_sectorId_contractNumber_key"),
@@ -166,6 +175,74 @@ class Contract(Base):
         Index("Contract_notify_endDate_idx", "notify", "endDate"),
         Index("Contract_notificationTeamId_idx", "notificationTeamId"),
     )
+
+
+class ContractAuditUpdate(Base):
+    """Atualização colaborativa publicada no painel de um contrato."""
+
+    __tablename__ = "ContractAuditUpdate"
+
+    id: Mapped[str] = uuid_pk()
+    contractId: Mapped[str] = mapped_column(
+        String, ForeignKey("Contract.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    authorId: Mapped[str | None] = mapped_column(
+        String, ForeignKey("User.id", ondelete="SET NULL", onupdate="CASCADE"), nullable=True
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    mentionedUserIds: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    createdAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow)
+    updatedAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow, onupdate=utcnow)
+
+    contract: Mapped[Contract] = relationship(back_populates="auditUpdates")
+    author: Mapped[User | None] = relationship("User")
+    attachments: Mapped[list[ContractAuditAttachment]] = relationship(
+        back_populates="update", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("ContractAuditUpdate_contractId_createdAt_idx", "contractId", "createdAt"),)
+
+
+class ContractAuditAttachment(Base):
+    __tablename__ = "ContractAuditAttachment"
+
+    id: Mapped[str] = uuid_pk()
+    updateId: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("ContractAuditUpdate.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contentType: Mapped[str] = mapped_column(String(160), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    createdAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow)
+
+    update: Mapped[ContractAuditUpdate] = relationship(back_populates="attachments")
+
+    __table_args__ = (Index("ContractAuditAttachment_updateId_idx", "updateId"),)
+
+
+class ContractAuditActivity(Base):
+    __tablename__ = "ContractAuditActivity"
+
+    id: Mapped[str] = uuid_pk()
+    contractId: Mapped[str] = mapped_column(
+        String, ForeignKey("Contract.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    actorId: Mapped[str | None] = mapped_column(
+        String, ForeignKey("User.id", ondelete="SET NULL", onupdate="CASCADE"), nullable=True
+    )
+    type: Mapped[str] = mapped_column(String(24), nullable=False)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    fromStage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    toStage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    createdAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow)
+
+    contract: Mapped[Contract] = relationship(back_populates="auditActivities")
+    actor: Mapped[User | None] = relationship("User")
+
+    __table_args__ = (Index("ContractAuditActivity_contractId_createdAt_idx", "contractId", "createdAt"),)
 
 
 class NotificationTeam(Base):

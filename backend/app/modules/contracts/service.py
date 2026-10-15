@@ -24,6 +24,7 @@ from app.modules.contracts.access import (
 from app.modules.contracts.audit_workflow import sync_contract_audit_stage
 from app.modules.contracts.rules import contracts_today, days_to_end, derive_alert, derive_situation
 from app.modules.contracts.schemas import (
+    AuditStage,
     ContractCreateIn,
     ContractOut,
     ContractUpdateIn,
@@ -56,7 +57,8 @@ def to_contract_out(item: Contract, access: SectorAccess) -> ContractOut:
         end_date=item.endDate,
         unit=item.unit,
         finalized=item.finalized,
-        audit_stage=item.auditStage,
+        audit_stage=cast(AuditStage | None, item.auditStage),
+        audit_stage_entered_at=item.auditStageEnteredAt,
         regularization_stage=cast(RegularizationStage | None, item.regularizationStage),
         regularization_responsible=item.regularizationResponsible,
         regularization_deadline=item.regularizationDeadline,
