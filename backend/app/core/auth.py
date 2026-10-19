@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.core.errors import UnauthorizedError
-from app.core.permissions import Permission, Role, assert_can
+from app.core.permissions import ForbiddenError, Permission, Role, assert_can
 from app.models.user import User
 
 _DEV_TOKEN_ROLES: dict[str, Role] = {
@@ -41,6 +41,7 @@ class CurrentUser:
     name: str
     role: Role
     active: bool
+    password_change_required: bool = False
     # Usuário de login (só no modo homologação); no Keycloak a identidade é o e-mail.
     username: str | None = None
 
@@ -256,29 +257,42 @@ async def get_current_user(
         name=db_user.name,
         role=Role(db_user.role.value if hasattr(db_user.role, "value") else db_user.role),
         active=db_user.active,
+        password_change_required=db_user.passwordChangeRequired,
         username=username,
     )
 
 
 async def _homologation_user(request: Request, session: AsyncSession, settings: Settings) -> User:
-    from app.core.homologation_auth import accounts, user_from_session
+    from app.core.homologation_auth import HOMOLOGATION_AUTH_PROVIDER, accounts, user_from_session
 
     token = request.cookies.get(settings.auth_cookie_name)
     if not token:
         raise UnauthorizedError()
     user = await user_from_session(session, token)
-    # A conta precisa continuar configurada: tirar/renomear a variável derruba as sessões dela.
-    if user is None or (user.externalUserId or "").lower() not in accounts(settings):
+    if user is None:
+        raise UnauthorizedError("Sessão expirada ou inválida")
+    # Contas fixas precisam continuar configuradas; contas LOCAL vivem no banco.
+    if (
+        user.authProvider == HOMOLOGATION_AUTH_PROVIDER
+        and (user.externalUserId or "").lower() not in accounts(settings)
+    ):
         raise UnauthorizedError("Sessão expirada ou inválida")
     return user
 
 
 async def require_user(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if current_user.password_change_required:
+        raise ForbiddenError(
+            Permission.CONTRACTS_VIEW,
+            "Troque a senha inicial antes de acessar o Hub",
+        )
     return current_user
 
 
 def require_permission(permission: Permission) -> Callable[..., Awaitable[CurrentUser]]:
     async def _dependency(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if current_user.password_change_required:
+            raise ForbiddenError(permission, "Troque a senha inicial antes de acessar o Hub")
         assert_can(current_user.role, permission)
         return current_user
 

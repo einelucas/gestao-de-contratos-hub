@@ -54,6 +54,13 @@ export const useAuthStore = defineStore("auth", () => {
     user.value = await useApi().post<CurrentUser>("/auth/login", { username, password });
   }
 
+  async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    user.value = await useApi().post<CurrentUser>("/auth/change-password", {
+      currentPassword,
+      newPassword,
+    });
+  }
+
   async function loginDev(role: Role): Promise<void> {
     token.value = `dev-${role.toLowerCase()}`;
     if (!(await loadUser())) throw new Error("O backend não aceitou a autenticação de desenvolvimento.");
@@ -71,6 +78,6 @@ export const useAuthStore = defineStore("auth", () => {
   function clear(): void { token.value = null; user.value = null; }
   return {
     token, user, loading, provider, providerError, authenticated, isAdmin, can,
-    loadProvider, loadUser, loginPassword, loginDev, acceptToken, logoutSession, clear,
+    loadProvider, loadUser, loginPassword, changePassword, loginDev, acceptToken, logoutSession, clear,
   };
 });

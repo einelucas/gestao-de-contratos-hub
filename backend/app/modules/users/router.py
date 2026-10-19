@@ -36,6 +36,7 @@ async def list_usuarios(
                 email=u.email,
                 role=u.role.value,
                 active=u.active,
+                password_change_required=u.passwordChangeRequired,
                 auth_provider=u.authProvider,
                 last_login_at=u.lastLoginAt,
                 created_at=u.createdAt,
@@ -51,12 +52,15 @@ async def create_usuario(
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(require_permission(Permission.USERS_MANAGE)),
 ) -> CreateUserOut:
-    user = await service.create_user(
-        session, name=body.name, email=body.email, role=body.role, admin=current_user
-    )
+    user = await service.create_user(session, name=body.name, email=body.email, admin=current_user)
     return CreateUserOut(
         user=UserBasicOut(
-            id=user.id, name=user.name, email=user.email, role=user.role.value, active=user.active
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            role=user.role.value,
+            active=user.active,
+            password_change_required=user.passwordChangeRequired,
         )
     )
 
@@ -72,6 +76,11 @@ async def update_usuario(
     user = await service.update_user(session, user_id=user_id, changes=changes, admin=current_user)
     return UpdateUserOut(
         user=UserBasicOut(
-            id=user.id, name=user.name, email=user.email, role=user.role.value, active=user.active
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            role=user.role.value,
+            active=user.active,
+            password_change_required=user.passwordChangeRequired,
         )
     )

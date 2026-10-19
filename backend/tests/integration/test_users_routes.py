@@ -23,8 +23,10 @@ async def test_only_admin_can_list_and_create_users(client, auth_header) -> None
         headers=auth_header("ADMIN"),
     )
     assert created.status_code == 201
-    assert created.json()["user"]["role"] == "ANALYST"
+    # O perfil enviado é ignorado: toda conta criada pela rota interna nasce ADMIN.
+    assert created.json()["user"]["role"] == "ADMIN"
     assert created.json()["user"]["active"] is True
+    assert created.json()["user"]["passwordChangeRequired"] is True
 
     listed = await client.get("/api/v1/usuarios", headers=auth_header("ADMIN"))
     assert listed.status_code == 200

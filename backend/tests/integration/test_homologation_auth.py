@@ -11,11 +11,12 @@ from sqlalchemy import select, update
 
 from app.core.config import Settings, get_settings
 from app.core.homologation_auth import login_rate_limiter
+from app.core.local_auth import DEFAULT_LOCAL_PASSWORD, LOCAL_ACCOUNT_PROVIDER
 from app.main import app as fastapi_app
 from app.models.common import utcnow
 from app.models.contracts import Sector, Supplier, UserSectorPermission
+from app.models.user import Account, User
 from app.models.user import Session as UserSession
-from app.models.user import User
 
 VIEWER_PASSWORD = "senha-viewer-de-teste-123"
 ADMIN_PASSWORD = "senha-admin-de-teste-456"
@@ -83,6 +84,68 @@ async def test_admin_login(client, homologation) -> None:
     assert (await client.get("/api/v1/usuarios")).status_code == 200
     assert (await client.get("/api/v1/notificacoes-contratos")).status_code == 200
     assert (await client.get("/api/v1/equipes-notificacao")).status_code == 200
+
+
+async def test_admin_created_local_user_must_change_initial_password(
+    client, homologation, db_session
+) -> None:
+    await _login(client, "administrador", ADMIN_PASSWORD)
+    created = await client.post(
+        "/api/v1/usuarios",
+        json={"name": "Nova Administradora", "email": "NOVA@EXAMPLE.COM", "role": "VIEWER"},
+    )
+    assert created.status_code == 201
+    body = created.json()["user"]
+    assert body["email"] == "nova@example.com"
+    assert body["role"] == "ADMIN"
+    assert body["passwordChangeRequired"] is True
+
+    account = (
+        await db_session.execute(
+            select(Account).where(
+                Account.userId == body["id"], Account.providerId == LOCAL_ACCOUNT_PROVIDER
+            )
+        )
+    ).scalar_one()
+    assert account.password and account.password != DEFAULT_LOCAL_PASSWORD
+    assert PasswordHasher().verify(account.password, DEFAULT_LOCAL_PASSWORD)
+
+    await client.post("/api/v1/auth/logout")
+    logged = await _login(client, "NOVA@example.com", DEFAULT_LOCAL_PASSWORD)
+    assert logged.status_code == 200
+    assert logged.json()["role"] == "ADMIN"
+    assert logged.json()["passwordChangeRequired"] is True
+
+    # A sessão temporária só acessa identidade, logout e troca de senha.
+    blocked = await client.get("/api/v1/contratos")
+    assert blocked.status_code == 403
+    assert "Troque a senha inicial" in blocked.json()["error"]
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+
+    wrong = await client.post(
+        "/api/v1/auth/change-password",
+        json={"currentPassword": "senha-incorreta", "newPassword": "Nova@Senha2026"},
+    )
+    assert wrong.status_code == 401
+
+    for invalid_password in (DEFAULT_LOCAL_PASSWORD, "curta", "apenasminusculas1"):
+        invalid = await client.post(
+            "/api/v1/auth/change-password",
+            json={"currentPassword": DEFAULT_LOCAL_PASSWORD, "newPassword": invalid_password},
+        )
+        assert invalid.status_code == 422
+
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        json={"currentPassword": DEFAULT_LOCAL_PASSWORD, "newPassword": "Nova@Senha2026"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["passwordChangeRequired"] is False
+    assert (await client.get("/api/v1/contratos")).status_code == 200
+
+    await client.post("/api/v1/auth/logout")
+    assert (await _login(client, "nova@example.com", DEFAULT_LOCAL_PASSWORD)).status_code == 401
+    assert (await _login(client, "nova@example.com", "Nova@Senha2026")).status_code == 200
 
 
 async def test_invalid_credentials_are_generic(client, homologation, db_session) -> None:

@@ -32,6 +32,8 @@ class User(Base):
     image: Mapped[str | None] = mapped_column(String, nullable=True)
     role: Mapped[Role] = mapped_column(RoleEnum, nullable=False, default=Role.VIEWER)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Contas locais criadas pela administração só acessam o Hub após trocar a senha inicial.
+    passwordChangeRequired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     authProvider: Mapped[str] = mapped_column(String, nullable=False, default="LOCAL")
     externalUserId: Mapped[str | None] = mapped_column(String, nullable=True)
     lastLoginAt: Mapped[datetime | None] = mapped_column(Timestamp3, nullable=True)

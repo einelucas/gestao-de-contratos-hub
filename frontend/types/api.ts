@@ -7,6 +7,7 @@ export interface CurrentUser {
   name: string;
   role: Role;
   active: boolean;
+  passwordChangeRequired: boolean;
   permissions?: Permission[];
 }
 
@@ -194,6 +195,10 @@ export interface UserListItem {
   email: string;
   role: Role;
   active: boolean;
+  passwordChangeRequired: boolean;
+  authProvider?: string;
+  lastLoginAt?: string | null;
+  createdAt?: string;
 }
 
 export interface UserSectorPermission {
