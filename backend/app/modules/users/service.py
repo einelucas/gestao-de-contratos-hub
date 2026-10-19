@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import KEYCLOAK_AUTH_PROVIDER, CurrentUser
+from app.core.auth import CurrentUser
 from app.core.errors import ConflictError, NotFoundError
+from app.core.local_auth import LOCAL_AUTH_PROVIDER, create_local_account, normalize_login
 from app.core.permissions import Role as PermissionRole
 from app.models.user import Role as UserRole
 from app.models.user import User
@@ -35,24 +36,26 @@ async def create_user(
     *,
     name: str,
     email: str,
-    role: PermissionRole,
     admin: CurrentUser,
 ) -> User:
-    existing = await session.execute(select(User).where(User.email == email))
+    clean_email = normalize_login(email)
+    existing = await session.execute(select(User).where(func.lower(User.email) == clean_email))
     if existing.scalar_one_or_none() is not None:
         raise ConflictError("Já existe um usuário com este e-mail")
 
     user = User(
-        name=name,
-        email=email,
-        role=_to_user_role(role),
+        name=name.strip(),
+        email=clean_email,
+        role=UserRole.ADMIN,
         active=True,
         emailVerified=True,
-        authProvider=KEYCLOAK_AUTH_PROVIDER,
-        externalUserId=None,
+        passwordChangeRequired=True,
+        authProvider=LOCAL_AUTH_PROVIDER,
+        externalUserId=clean_email,
     )
     session.add(user)
     await session.flush()
+    await create_local_account(session, user)
 
     await record_audit(
         session,
@@ -60,7 +63,12 @@ async def create_user(
         action="user.create",
         entity="User",
         entity_id=user.id,
-        new_data={"email": user.email, "role": user.role.value},
+        new_data={
+            "email": user.email,
+            "role": user.role.value,
+            "authProvider": user.authProvider,
+            "passwordChangeRequired": user.passwordChangeRequired,
+        },
     )
     await session.commit()
     await session.refresh(user)

@@ -224,7 +224,7 @@ async def user_from_session(session: AsyncSession, token: str) -> User | None:
     if row is None:
         return None
     _, user = row
-    if user.authProvider != HOMOLOGATION_AUTH_PROVIDER or not user.active:
+    if user.authProvider not in {HOMOLOGATION_AUTH_PROVIDER, "LOCAL"} or not user.active:
         return None
     return user
 

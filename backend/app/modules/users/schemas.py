@@ -18,6 +18,7 @@ class UserListItemOut(CamelModel):
     email: str
     role: Role
     active: bool
+    password_change_required: bool
     auth_provider: str
     last_login_at: datetime | None
     created_at: datetime
@@ -30,7 +31,6 @@ class UserListOut(CamelModel):
 class CreateUserIn(CamelModel):
     name: str = Field(min_length=1)
     email: str = Field(pattern=_EMAIL_PATTERN)
-    role: Role = Role.VIEWER
 
     @field_validator("name")
     @classmethod
@@ -46,6 +46,7 @@ class UserBasicOut(CamelModel):
     email: str
     role: Role
     active: bool
+    password_change_required: bool
 
 
 class CreateUserOut(CamelModel):

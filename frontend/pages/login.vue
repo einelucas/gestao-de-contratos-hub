@@ -27,7 +27,7 @@ async function detectMode(): Promise<void> {
   }
   // Sessão ainda válida: não mostra o login de novo.
   if (await store.loadUser()) {
-    await navigateTo(redirectTo.value, { replace: true });
+    await navigateTo(store.user?.passwordChangeRequired ? "/alterar-senha" : redirectTo.value, { replace: true });
     return;
   }
   checking.value = false;
@@ -45,7 +45,7 @@ async function submitPassword() {
   try {
     await store.loginPassword(username.value.trim(), password.value);
     password.value = "";
-    await navigateTo(redirectTo.value, { replace: true });
+    await navigateTo(store.user?.passwordChangeRequired ? "/alterar-senha" : redirectTo.value, { replace: true });
   } catch (cause) {
     const status = (cause as { status?: number }).status;
     error.value =
