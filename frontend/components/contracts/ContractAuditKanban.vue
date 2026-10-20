@@ -2,6 +2,8 @@
 
 import {
   AtSign,
+  BellRing,
+  CalendarClock,
   Building2,
   CalendarDays,
   Loader2,
@@ -23,6 +25,8 @@ import type {
   AuditUser,
   AuditWorkspace,
   Contract,
+  InternalNotification,
+  InternalNotificationList,
 } from "~/types/api";
 
 import { dateBr, daysToEndLabel, money } from "~/utils/contracts";
@@ -50,6 +54,9 @@ const STAGES: Array<{ key: UiAuditStage; label: string; color: string }> = [
 ];
 
 const api = useApi();
+const route = useRoute();
+const router = useRouter();
+const internalInbox = useInternalNotifications();
 
 // TEMP-AVATAR (remover na versão final): foto de perfil trocada pelo botão "Registro de Atividades".
 const temporaryAvatar = useTemporaryAvatar();
@@ -102,7 +109,7 @@ type CurrentStageTiming = {
   startedAt: string;
 };
 
-type AuditTab = "updates" | "files" | "activity";
+type AuditTab = "updates" | "files" | "activity" | "reminders";
 
 const activeAuditTab = ref<AuditTab>("updates");
 const newUpdateText = ref("");
@@ -123,6 +130,92 @@ const users = ref<AuditUser[]>([]);
 const currentUserId = ref("");
 const mentionCounts = ref<Record<string, number>>({});
 const auditActivity = ref<AuditActivity[]>([]);
+
+
+const contractReminders = ref<InternalNotification[]>([]);
+const reminderDate = ref("");
+const reminderMessage = ref("");
+const reminderLoading = ref(false);
+const reminderSaving = ref(false);
+const reminderError = ref("");
+const reminderSuccess = ref("");
+const reminderLocalMin = computed(() => {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+});
+
+function formatReminderDate(value: string): string {
+  return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+async function loadContractReminders(contractId: string): Promise<void> {
+  reminderLoading.value = true;
+  reminderError.value = "";
+  try {
+    const response = await api.get<InternalNotificationList>("/notificacoes-internas", {
+      contractId, includeScheduled: true,
+    });
+    if (selectedContract.value?.id === contractId) {
+      contractReminders.value = response.items.filter(item => item.kind === "REMINDER");
+    }
+  } catch (cause) {
+    reminderError.value = cause instanceof Error ? cause.message : "Não foi possível carregar os lembretes.";
+  } finally {
+    reminderLoading.value = false;
+  }
+}
+
+async function scheduleReminder(): Promise<void> {
+  const contract = selectedContract.value;
+  if (!contract || reminderSaving.value) return;
+  reminderError.value = "";
+  reminderSuccess.value = "";
+  const when = new Date(reminderDate.value);
+  if (!reminderDate.value || Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+    reminderError.value = "Escolha uma data e hora futuras.";
+    return;
+  }
+  if (!reminderMessage.value.trim()) {
+    reminderError.value = "Escreva o que deseja lembrar.";
+    return;
+  }
+  reminderSaving.value = true;
+  try {
+    await api.post("/contratos/" + encodeURIComponent(contract.id) + "/lembretes", {
+      scheduledAt: when.toISOString(), message: reminderMessage.value.trim(),
+    });
+    reminderDate.value = "";
+    reminderMessage.value = "";
+    reminderSuccess.value = "Lembrete programado. Ele aparecerá no sino do aplicativo na data escolhida.";
+    await loadContractReminders(contract.id);
+    void internalInbox.load();
+  } catch (cause) {
+    reminderError.value = cause instanceof Error ? cause.message : "Não foi possível agendar o lembrete.";
+  } finally {
+    reminderSaving.value = false;
+  }
+}
+
+async function removeReminder(item: InternalNotification): Promise<void> {
+  const contract = selectedContract.value;
+  if (!contract) return;
+  reminderError.value = "";
+  try {
+    await api.delete("/notificacoes-internas/" + encodeURIComponent(item.id));
+    await loadContractReminders(contract.id);
+    void internalInbox.load();
+  } catch (cause) {
+    reminderError.value = cause instanceof Error ? cause.message : "Não foi possível excluir o lembrete.";
+  }
+}
+
+function openContractFromQuery(): void {
+  const id = route.query.contrato;
+  if (typeof id !== "string" || selectedContract.value?.id === id) return;
+  const contract = items.value.find(item => item.id === id);
+  if (contract) openContract(contract);
+}
+watch(() => route.query.contrato, openContractFromQuery);
 
 const compactMode = ref(false);
 const mentionsOnly = ref(false);
@@ -707,6 +800,7 @@ async function load(): Promise<void> {
     mentionCounts.value = auditResponse.mentionCounts ?? {};
 
     ensureStageTiming(items.value);
+    openContractFromQuery();
 
     if (
       unit.value !== "Todas" &&
@@ -1118,12 +1212,18 @@ function openContract(item: Contract): void {
   activeAuditTab.value = "updates";
   newUpdateText.value = "";
   pendingAttachments.value = [];
+  reminderDate.value = "";
+  reminderMessage.value = "";
+  reminderSuccess.value = "";
+  contractReminders.value = [];
+  void loadContractReminders(item.id);
   void loadWorkspace(item.id).catch((cause: unknown) => {
     error.value = cause instanceof Error ? cause.message : "Não foi possível carregar os detalhes.";
   });
 }
 
 function closeContract(): void {
+  if (route.query.contrato) void router.replace({ query: { ...route.query, contrato: undefined } });
   selectedContract.value = null;
   activeAuditTab.value = "updates";
   newUpdateText.value = "";
@@ -1828,10 +1928,67 @@ function closeContract(): void {
                   {{ selectedContractActivity.length }}
                 </span>
               </button>
+
+              <button
+                type="button"
+                :class="{ active: activeAuditTab === 'reminders' }"
+                @click="activeAuditTab = 'reminders'"
+              >
+                <BellRing class="inline-block size-4 align-text-bottom" />
+                Lembretes
+                <span v-if="contractReminders.length" class="audit-tab-count">{{ contractReminders.length }}</span>
+              </button>
             </div>
 
             <div class="audit-update-body">
-              <template v-if="activeAuditTab === 'updates'">
+
+              <template v-if="activeAuditTab === 'reminders'">
+                <div class="space-y-4 p-4 sm:p-5">
+                  <div class="rounded-xl border border-[#e7ecf3] bg-[#f8faff] p-4">
+                    <h3 class="flex items-center gap-2 text-sm font-bold text-[#20324a]">
+                      <CalendarClock class="size-4" /> Programar lembrete
+                    </h3>
+                    <p class="mb-4 mt-1 text-xs leading-relaxed text-slate-500">
+                      Escolha quando receber uma notificação pessoal sobre este contrato no sino do aplicativo.
+                    </p>
+                    <form class="space-y-3" @submit.prevent="scheduleReminder">
+                      <label class="block text-xs font-semibold text-slate-700">
+                        Data e hora
+                        <input v-model="reminderDate" type="datetime-local" :min="reminderLocalMin" required
+                          class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800" />
+                      </label>
+                      <label class="block text-xs font-semibold text-slate-700">
+                        O que deseja lembrar?
+                        <textarea v-model="reminderMessage" maxlength="500" rows="3" required
+                          placeholder="Ex.: Cobrar retorno do fornecedor sobre a renovação"
+                          class="mt-1 block w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800" />
+                      </label>
+                      <p v-if="reminderError" role="alert" class="text-xs font-semibold text-red-600">{{ reminderError }}</p>
+                      <p v-if="reminderSuccess" role="status" class="text-xs font-semibold text-green-700">{{ reminderSuccess }}</p>
+                      <button type="submit" :disabled="reminderSaving"
+                        class="inline-flex items-center gap-2 rounded-lg bg-[#304f7e] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-60">
+                        <BellRing class="size-4" /> {{ reminderSaving ? "Salvando…" : "Programar lembrete" }}
+                      </button>
+                    </form>
+                  </div>
+                  <div>
+                    <h3 class="mb-2 text-sm font-bold text-[#20324a]">Meus lembretes deste contrato</h3>
+                    <p v-if="reminderLoading" class="text-xs text-slate-500">Carregando lembretes…</p>
+                    <p v-else-if="!contractReminders.length" class="text-xs text-slate-500">Nenhum lembrete programado.</p>
+                    <div v-for="item in contractReminders" :key="item.id" class="mb-2 flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                      <div class="min-w-0">
+                        <p class="text-xs font-bold text-[#304f7e]">{{ formatReminderDate(item.scheduledAt) }}</p>
+                        <p class="mt-1 break-words text-sm text-slate-700">{{ item.message }}</p>
+                        <small class="text-slate-500">{{ item.readAt ? "Lido" : new Date(item.scheduledAt).getTime() <= Date.now() ? "Disponível na central" : "Agendado" }}</small>
+                      </div>
+                      <button type="button" class="shrink-0 rounded-md border border-slate-200 px-2 py-1.5 text-xs text-red-700 hover:bg-red-50"
+                        :aria-label="'Excluir lembrete de ' + formatReminderDate(item.scheduledAt)" @click="removeReminder(item)">Excluir</button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="activeAuditTab === 'updates'">
                 <p v-if="publishNotice" class="audit-publish-notice" role="status">
                   {{ publishNotice }}
                 </p>
