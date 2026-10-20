@@ -51,7 +51,7 @@ def to_out(item) -> InternalNotificationOut:
         actor_name=item.actor.name if item.actor else None,
         message=item.message,
         scheduled_at=service.utc_iso(item.scheduledAt),
-        read_at=service.utc_iso(item.readAt),
+        read_at=service.utc_iso(item.readAt) if item.readAt else None,
         created_at=service.utc_iso(item.createdAt),
     )
 

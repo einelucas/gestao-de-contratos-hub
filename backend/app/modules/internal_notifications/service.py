@@ -16,8 +16,8 @@ from app.models.user import Role, User
 from app.modules.contracts.access import assert_can_view, restrict_to_viewable, sector_access
 
 
-def utc_iso(value: datetime | None) -> datetime | None:
-    return value.replace(tzinfo=UTC) if value is not None else None
+def utc_iso(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC)
 
 
 async def sync_mentions(

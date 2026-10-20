@@ -7,6 +7,7 @@ Create Date: 2026-10-20
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import TIMESTAMP
 
 revision = "0014_internal_notifications"
 down_revision = "0013_local_user_password"
@@ -24,9 +25,9 @@ def upgrade() -> None:
         sa.Column("auditUpdateId", sa.String(), sa.ForeignKey("ContractAuditUpdate.id", ondelete="CASCADE", onupdate="CASCADE")),
         sa.Column("kind", sa.String(16), nullable=False),
         sa.Column("message", sa.String(500), nullable=False),
-        sa.Column("scheduledAt", sa.TIMESTAMP(precision=3), nullable=False),
-        sa.Column("readAt", sa.TIMESTAMP(precision=3)),
-        sa.Column("createdAt", sa.TIMESTAMP(precision=3), nullable=False),
+        sa.Column("scheduledAt", TIMESTAMP(precision=3), nullable=False),
+        sa.Column("readAt", TIMESTAMP(precision=3)),
+        sa.Column("createdAt", TIMESTAMP(precision=3), nullable=False),
         sa.CheckConstraint("kind IN ('MENTION', 'REMINDER')", name="InAppNotification_kind_check"),
     )
     op.create_index("InAppNotification_user_due_idx", "InAppNotification", ["userId", "scheduledAt"])
