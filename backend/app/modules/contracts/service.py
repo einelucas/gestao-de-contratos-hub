@@ -472,7 +472,6 @@ async def update_contract(
     deadline_changed = bool(
         {"end_date", "dilation", "dilation_end_date"} & body.model_fields_set
     )
-    sync_contract_audit_stage(item, deadline_changed=deadline_changed)
     if (
         before["regularizationStage"]
         and deadline_changed
@@ -480,6 +479,15 @@ async def update_contract(
         and current_effective_end >= contracts_today()
     ):
         item.regularizationStage = None
+    # A conclusão pode acontecer sem alterar a data final no mesmo PATCH.
+    # Nesse caso o Kanban deve liberar "Aguardando Análise" se o contrato
+    # estiver realmente regular, sem apagar etapas manuais já avançadas.
+    regularization_completed = bool(
+        before["regularizationStage"] and item.regularizationStage is None
+    )
+    sync_contract_audit_stage(
+        item, deadline_changed=deadline_changed, regularization_completed=regularization_completed
+    )
     record_regularization_history(item, before, current_user)
     await session.flush()
     audited_changes = {

@@ -168,6 +168,145 @@ async def test_extending_deadline_reopens_contract_and_returns_it_to_backlog(
     assert renewed["auditStage"] is None
 
 
+async def test_completing_regularization_returns_awaiting_contract_to_not_started(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    contract_url = f"/api/v1/contratos/{ids['regular']}"
+    move_url = f"{contract_url}/auditoria"
+
+    # Contrato regular em auditoria manual, com acompanhamento ainda pendente.
+    waiting = await client.patch(
+        move_url, json={"stage": "AGUARDANDO_ANALISE"}, headers=auth_header("ADMIN")
+    )
+    assert waiting.status_code == 200
+    assert waiting.json()["auditStage"] == "AGUARDANDO_ANALISE"
+
+    started = await client.patch(
+        contract_url,
+        json={"regularizationStage": "aguardando_analise"},
+        headers=auth_header("ADMIN"),
+    )
+    assert started.status_code == 200
+    assert started.json()["alert"] == "Regularizacao"
+    assert started.json()["auditStage"] == "AGUARDANDO_ANALISE"
+
+    regularized = await client.patch(
+        contract_url,
+        json={"regularizationStage": None},
+        headers=auth_header("ADMIN"),
+    )
+    assert regularized.status_code == 200, regularized.text
+    assert regularized.json()["alert"] == "Regular"
+    assert regularized.json()["auditStage"] is None
+    assert regularized.json()["auditStageEnteredAt"] is None
+    assert regularized.json()["regularizationStage"] is None
+
+    board = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    row = next(item for item in board.json()["items"] if item["id"] == ids["regular"])
+    assert row["auditStage"] is None
+
+
+async def test_regularization_does_not_reset_advanced_manual_audit_stages(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    contract_url = f"/api/v1/contratos/{ids['regular']}"
+    move = await client.patch(
+        f"{contract_url}/auditoria",
+        json={"stage": "EM_TRATATIVA"},
+        headers=auth_header("ADMIN"),
+    )
+    assert move.status_code == 200
+
+    await client.patch(
+        contract_url,
+        json={"regularizationStage": "em_tratativa"},
+        headers=auth_header("ADMIN"),
+    )
+    regularized = await client.patch(
+        contract_url,
+        json={"regularizationStage": None},
+        headers=auth_header("ADMIN"),
+    )
+    assert regularized.status_code == 200, regularized.text
+    assert regularized.json()["alert"] == "Regular"
+    assert regularized.json()["auditStage"] == "EM_TRATATIVA"
+
+
+async def test_a_regular_contract_explicitly_moved_to_awaiting_is_not_reset_on_board_reload(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    move = await client.patch(
+        f"/api/v1/contratos/{ids['regular']}/auditoria",
+        json={"stage": "AGUARDANDO_ANALISE"},
+        headers=auth_header("ADMIN"),
+    )
+    assert move.status_code == 200
+
+    # Estar "Regular" por si só não deve reverter um movimento manual:
+    # a saída automática ocorre quando a regularização é concluída.
+    board = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    waiting = next(item for item in board.json()["items"] if item["id"] == ids["regular"])
+    assert waiting["auditStage"] == "AGUARDANDO_ANALISE"
+
+
+async def test_renewing_contract_does_not_reset_advanced_manual_audit_stage(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    contract_url = f"/api/v1/contratos/{ids['overdue']}"
+    await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    moved = await client.patch(
+        f"{contract_url}/auditoria",
+        json={"stage": "EM_TRATATIVA"},
+        headers=auth_header("ADMIN"),
+    )
+    assert moved.status_code == 200
+
+    renewed = await client.patch(
+        contract_url,
+        json={"endDate": (contracts_today() + timedelta(days=120)).isoformat()},
+        headers=auth_header("ADMIN"),
+    )
+    assert renewed.status_code == 200, renewed.text
+    assert renewed.json()["alert"] == "Regular"
+    assert renewed.json()["auditStage"] == "EM_TRATATIVA"
+
+    board = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    row = next(item for item in board.json()["items"] if item["id"] == ids["overdue"])
+    assert row["auditStage"] == "EM_TRATATIVA"
+
+
+async def test_regularization_keeps_awaiting_when_contract_still_due_soon(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    contract_url = f"/api/v1/contratos/{ids['overdue']}"
+    await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+
+    started = await client.patch(
+        contract_url,
+        json={"regularizationStage": "aguardando_analise"},
+        headers=auth_header("ADMIN"),
+    )
+    assert started.status_code == 200
+
+    # Renovou, mas a nova vigência ainda está na janela de cinco dias.
+    renewed = await client.patch(
+        contract_url,
+        json={
+            "endDate": (contracts_today() + timedelta(days=3)).isoformat(),
+            "regularizationStage": None,
+        },
+        headers=auth_header("ADMIN"),
+    )
+    assert renewed.status_code == 200, renewed.text
+    assert renewed.json()["alert"] == "Atencao"
+    assert renewed.json()["auditStage"] == "AGUARDANDO_ANALISE"
+
+
 async def test_regular_contract_can_start_audit_and_workspace_is_persisted(
     client, auth_header, db_session
 ) -> None:
