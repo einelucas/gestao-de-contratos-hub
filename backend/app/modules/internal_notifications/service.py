@@ -84,7 +84,7 @@ async def inbox(
         selectinload(InAppNotification.contract).selectinload(Contract.supplier),
         selectinload(InAppNotification.actor)
     ).order_by(InAppNotification.scheduledAt.desc()).limit(150)
-    items = (await session.execute(stmt)).scalars().all()
+    items = list((await session.execute(stmt)).scalars().all())
     # Contagem exata dos itens não lidos visíveis, sem o limite da lista.
     count_query = select(func.count(InAppNotification.id)).select_from(InAppNotification).join(
         Contract, InAppNotification.contractId == Contract.id

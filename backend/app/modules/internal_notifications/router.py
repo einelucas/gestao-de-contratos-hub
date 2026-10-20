@@ -12,6 +12,7 @@ from app.core.auth import CurrentUser, require_user
 from app.core.database import get_session
 from app.core.errors import DomainError
 from app.models.common import utcnow
+from app.models.contracts import InAppNotification
 from app.modules.internal_notifications import service
 from app.shared.schema import CamelModel
 
@@ -41,7 +42,7 @@ class InternalNotificationListOut(CamelModel):
     unread_count: int
 
 
-def to_out(item) -> InternalNotificationOut:
+def to_out(item: InAppNotification) -> InternalNotificationOut:
     return InternalNotificationOut(
         id=item.id,
         kind=item.kind,
