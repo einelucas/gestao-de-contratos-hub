@@ -35,6 +35,7 @@ from app.modules.contracts.schemas import (
     AuditWorkspaceOut,
     ContractOut,
 )
+from app.modules.internal_notifications.service import sync_mentions
 from app.shared.audit import record_audit
 
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
@@ -297,6 +298,7 @@ async def create_update(
             ),
         )
     )
+    await sync_mentions(session, update, actor)
     await session.commit()
     refreshed = (
         await session.execute(
@@ -334,6 +336,7 @@ async def edit_update(
         )
     item.text = body.text.strip()
     item.mentionedUserIds = list(dict.fromkeys(body.mentioned_user_ids))
+    await sync_mentions(session, item, actor)
     session.add(
         ContractAuditActivity(
             contractId=item.contractId,

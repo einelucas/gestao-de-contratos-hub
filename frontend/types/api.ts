@@ -86,6 +86,23 @@ export interface Contract {
   updatedAt: string;
 }
 
+export interface InternalNotification {
+  id: string;
+  kind: "MENTION" | "REMINDER";
+  contractId: string;
+  contractNumber: string;
+  supplier: string;
+  actorName: string | null;
+  message: string;
+  scheduledAt: string;
+  readAt: string | null;
+  createdAt: string;
+}
+export interface InternalNotificationList {
+  items: InternalNotification[];
+  unreadCount: number;
+}
+
 export interface AuditBoard {
   items: Contract[];
   units: string[];
