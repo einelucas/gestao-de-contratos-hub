@@ -22,6 +22,7 @@ from app.models.contracts import (
 )
 from app.models.user import User
 from app.modules.contracts import service
+from app.modules.internal_notifications.service import sync_mentions
 from app.modules.contracts.access import assert_can_edit, assert_can_view, sector_access
 from app.modules.contracts.audit_workflow import FINALIZED, sync_contract_audit_stage
 from app.modules.contracts.schemas import (
@@ -297,6 +298,7 @@ async def create_update(
             ),
         )
     )
+    await sync_mentions(session, update, actor)
     await session.commit()
     refreshed = (
         await session.execute(
@@ -334,6 +336,7 @@ async def edit_update(
         )
     item.text = body.text.strip()
     item.mentionedUserIds = list(dict.fromkeys(body.mentioned_user_ids))
+    await sync_mentions(session, item, actor)
     session.add(
         ContractAuditActivity(
             contractId=item.contractId,

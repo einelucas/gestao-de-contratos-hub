@@ -434,3 +434,39 @@ class UserSectorPermission(Base):
         Index("UserSectorPermission_userId_idx", "userId"),
         Index("UserSectorPermission_sectorId_idx", "sectorId"),
     )
+
+
+class InAppNotification(Base):
+    """Evento de menção ou lembrete pessoal; a entrega acontece na central interna."""
+
+    __tablename__ = "InAppNotification"
+
+    id: Mapped[str] = uuid_pk()
+    userId: Mapped[str] = mapped_column(
+        String, ForeignKey("User.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    contractId: Mapped[str] = mapped_column(
+        String, ForeignKey("Contract.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    actorId: Mapped[str | None] = mapped_column(
+        String, ForeignKey("User.id", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    auditUpdateId: Mapped[str | None] = mapped_column(
+        String, ForeignKey("ContractAuditUpdate.id", ondelete="CASCADE", onupdate="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    scheduledAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False)
+    readAt: Mapped[datetime | None] = mapped_column(Timestamp3)
+    createdAt: Mapped[datetime] = mapped_column(Timestamp3, nullable=False, default=utcnow)
+
+    contract: Mapped[Contract] = relationship("Contract")
+    actor: Mapped[User | None] = relationship("User", foreign_keys=[actorId])
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('MENTION', 'REMINDER')", name="InAppNotification_kind_check"),
+        Index("InAppNotification_user_due_idx", "userId", "scheduledAt"),
+        Index("InAppNotification_user_read_idx", "userId", "readAt"),
+        Index("InAppNotification_contract_idx", "contractId"),
+        Index("InAppNotification_mention_key", "userId", "auditUpdateId", unique=True),
+    )
