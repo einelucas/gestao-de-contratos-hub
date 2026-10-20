@@ -234,6 +234,24 @@ async def test_regularization_does_not_reset_advanced_manual_audit_stages(
     assert regularized.json()["auditStage"] == "EM_TRATATIVA"
 
 
+async def test_a_regular_contract_explicitly_moved_to_awaiting_is_not_reset_on_board_reload(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    move = await client.patch(
+        f"/api/v1/contratos/{ids['regular']}/auditoria",
+        json={"stage": "AGUARDANDO_ANALISE"},
+        headers=auth_header("ADMIN"),
+    )
+    assert move.status_code == 200
+
+    # Estar "Regular" por si só não deve reverter um movimento manual:
+    # a saída automática ocorre quando a regularização é concluída.
+    board = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    waiting = next(item for item in board.json()["items"] if item["id"] == ids["regular"])
+    assert waiting["auditStage"] == "AGUARDANDO_ANALISE"
+
+
 async def test_renewing_contract_does_not_reset_advanced_manual_audit_stage(
     client, auth_header, db_session
 ) -> None:
