@@ -22,7 +22,6 @@ from app.models.contracts import (
 )
 from app.models.user import User
 from app.modules.contracts import service
-from app.modules.internal_notifications.service import sync_mentions
 from app.modules.contracts.access import assert_can_edit, assert_can_view, sector_access
 from app.modules.contracts.audit_workflow import FINALIZED, sync_contract_audit_stage
 from app.modules.contracts.schemas import (
@@ -36,6 +35,7 @@ from app.modules.contracts.schemas import (
     AuditWorkspaceOut,
     ContractOut,
 )
+from app.modules.internal_notifications.service import sync_mentions
 from app.shared.audit import record_audit
 
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024

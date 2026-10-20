@@ -8,9 +8,9 @@ from app.api.v1 import auth, health
 from app.modules.audit.router import router as audit_router
 from app.modules.contract_alerts.router import router as contract_alerts_router
 from app.modules.contracts.router import router as contracts_router
+from app.modules.internal_notifications.router import router as internal_notifications_router
 from app.modules.notification_teams.router import router as notification_teams_router
 from app.modules.users.router import router as users_router
-from app.modules.internal_notifications.router import router as internal_notifications_router
 
 api_router = APIRouter()
 api_router.include_router(health.router)

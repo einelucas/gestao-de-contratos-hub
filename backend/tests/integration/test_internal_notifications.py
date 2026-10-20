@@ -113,7 +113,7 @@ async def test_personal_reminder_is_scheduled_hidden_until_due_and_private(
     assert scheduled.json()["items"][0]["kind"] == "REMINDER"
 
     premature = await client.patch(API + "/" + notification_id + "/lida", headers=auth_header("VIEWER"))
-    assert premature.status_code == 400
+    assert premature.status_code == 422
     assert (await client.get(API, headers=auth_header("ADMIN"))).json()["items"] == []
     assert (await client.delete(API + "/" + notification_id, headers=auth_header("ADMIN"))).status_code == 404
 
@@ -145,7 +145,7 @@ async def test_reminder_rejects_invalid_date_and_inaccessible_contract(
         headers=auth_header("ADMIN"),
         json={"message": "Test", "scheduledAt": "2026-12-15T14:30:00"},
     )
-    assert invalid_date.status_code == 400
+    assert invalid_date.status_code == 422
     without_access = await client.post(
         "/api/v1/contratos/" + contract_id + "/lembretes",
         headers=auth_header("VIEWER"),
