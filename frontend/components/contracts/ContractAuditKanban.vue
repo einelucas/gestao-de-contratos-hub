@@ -30,6 +30,7 @@ import type {
 } from "~/types/api";
 
 import { dateBr, daysToEndLabel, money } from "~/utils/contracts";
+import { isPreviewableImage } from "~/utils/auditAttachments";
 
 type UiAuditStage = AuditStage | "NAO_INICIADO";
 
@@ -118,8 +119,9 @@ const publishNotice = ref("");
 const savingEdit = ref(false);
 let publishNoticeTimer: ReturnType<typeof setTimeout> | undefined;
 const auditUpdates = ref<AuditUpdate[]>([]);
-type PendingAttachment = AuditAttachment & { file: File };
+type PendingAttachment = AuditAttachment & { file: File; previewUrl?: string };
 const pendingAttachments = ref<PendingAttachment[]>([]);
+const attachmentError = ref("");
 const updateTextarea = ref<HTMLTextAreaElement | null>(null);
 const attachmentInput = ref<HTMLInputElement | null>(null);
 const editingUpdateId = ref<string | null>(null);
@@ -461,7 +463,7 @@ async function publishUpdate(): Promise<void> {
     );
     auditUpdates.value.unshift(created);
     newUpdateText.value = "";
-    pendingAttachments.value = [];
+    clearPendingAttachments();
     mentionOpen.value = false;
     mentionSearch.value = "";
     cancelEditUpdate();
@@ -541,11 +543,6 @@ function openAttachmentPicker(): void {
   attachmentInput.value?.click();
 }
 
-function isImageAttachment(_attachment: AuditAttachment): boolean {
-  // A prévia exige baixar o arquivo autenticado; o clique abre qualquer tipo.
-  return false;
-}
-
 async function openAttachment(attachment: AuditAttachment): Promise<void> {
   try {
     const blob = await api.request<Blob>(attachment.url, { method: "GET", responseType: "blob" });
@@ -557,17 +554,30 @@ async function openAttachment(attachment: AuditAttachment): Promise<void> {
   }
 }
 
-async function onAttachmentSelected(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
+const MAX_ATTACHMENTS_PER_UPDATE = 5;
 
+function clearPendingAttachments(): void {
+  for (const item of pendingAttachments.value) {
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  }
+  pendingAttachments.value = [];
+  attachmentError.value = "";
+}
+
+function queueFiles(files: File[]): void {
+  attachmentError.value = "";
   for (const file of files) {
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      error.value =
-        `O arquivo ${file.name} é maior que 5 MB.`;
+    if (pendingAttachments.value.length >= MAX_ATTACHMENTS_PER_UPDATE) {
+      attachmentError.value = "É possível anexar até 5 arquivos por atualização.";
+      break;
+    }
+    if (!file.size || file.size > MAX_ATTACHMENT_BYTES) {
+      attachmentError.value = file.size
+        ? "O arquivo " + file.name + " excede o limite de 5 MB."
+        : "O arquivo " + file.name + " está vazio.";
       continue;
     }
-
+    const previewable = isPreviewableImage({ name: file.name, type: file.type });
     pendingAttachments.value.push({
       id: crypto.randomUUID(),
       name: file.name,
@@ -575,17 +585,39 @@ async function onAttachmentSelected(event: Event): Promise<void> {
       type: file.type || "application/octet-stream",
       url: "",
       file,
+      previewUrl: previewable ? URL.createObjectURL(file) : undefined,
     });
   }
+}
 
+function onAttachmentSelected(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  queueFiles(Array.from(input.files ?? []));
   input.value = "";
 }
 
+/** Ctrl+V de um print adiciona a evidência; texto comum segue normalmente. */
+function onComposerPaste(event: ClipboardEvent): void {
+  if (publishing.value) return;
+  const items = Array.from(event.clipboardData?.items ?? []);
+  const images = items
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
+  if (!images.length) return;
+  event.preventDefault();
+  queueFiles(images.map((file, index) => {
+    const ext = file.type === "image/jpeg" ? "jpg" :
+      file.type === "image/webp" ? "webp" : "png";
+    return new File([file], "print-" + Date.now() + "-" + (index + 1) + "." + ext, { type: file.type });
+  }));
+}
 
 function removePendingAttachment(id: string): void {
-  pendingAttachments.value = pendingAttachments.value.filter(
-    (item) => item.id !== id,
-  );
+  const target = pendingAttachments.value.find((item) => item.id === id);
+  if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+  pendingAttachments.value = pendingAttachments.value.filter((item) => item.id !== id);
+  attachmentError.value = "";
 }
 
 function formatFileSize(bytes: number): string {
@@ -864,6 +896,7 @@ onBeforeUnmount(() => {
   clearInterval(stageClockTimer);
   window.removeEventListener("keydown", handleAuditKeydown);
   if (publishNoticeTimer) clearTimeout(publishNoticeTimer);
+  clearPendingAttachments();
 });
 
 const filtered = computed(() => {
@@ -1211,7 +1244,7 @@ function openContract(item: Contract): void {
   selectedContract.value = item;
   activeAuditTab.value = "updates";
   newUpdateText.value = "";
-  pendingAttachments.value = [];
+  clearPendingAttachments();
   reminderDate.value = "";
   reminderMessage.value = "";
   reminderSuccess.value = "";
@@ -1227,7 +1260,7 @@ function closeContract(): void {
   selectedContract.value = null;
   activeAuditTab.value = "updates";
   newUpdateText.value = "";
-  pendingAttachments.value = [];
+  clearPendingAttachments();
   mentionOpen.value = false;
   mentionSearch.value = "";
   cancelEditUpdate();
@@ -2014,6 +2047,7 @@ function closeContract(): void {
                       :readonly="publishing"
                       placeholder="Escreva uma atualização e mencione outros usuários com @"
                       @input="onUpdateTextInput"
+                      @paste="onComposerPaste"
                       @keydown.ctrl.enter="publishUpdate"
                       @keydown.enter.exact="onMentionEnter"
                       @keydown.esc="mentionOpen = false"
@@ -2065,11 +2099,14 @@ function closeContract(): void {
                         :key="attachment.id"
                         class="audit-pending-file"
                       >
-                        <span class="audit-file-icon">📎</span>
+                        <img v-if="attachment.previewUrl"
+                          :src="attachment.previewUrl" :alt="'Prévia de ' + attachment.name"
+                          class="audit-pending-image-preview" />
+                        <span v-else class="audit-file-icon">📎</span>
 
                         <div>
                           <strong>{{ attachment.name }}</strong>
-                          <span>{{ formatFileSize(attachment.size) }}</span>
+                          <span>{{ formatFileSize(attachment.size) }} · {{ attachment.previewUrl ? "Imagem pronta para publicar" : "Arquivo anexado" }}</span>
                         </div>
 
                         <button
@@ -2081,6 +2118,7 @@ function closeContract(): void {
                         </button>
                       </div>
                     </div>
+                    <p v-if="attachmentError" class="audit-attachment-error" role="alert">{{ attachmentError }}</p>
 
                     <input
                       ref="attachmentInput"
@@ -2111,7 +2149,7 @@ function closeContract(): void {
                         Anexar
                       </button>
 
-                      <span class="audit-composer-hint">Ctrl + Enter envia</span>
+                      <span class="audit-composer-hint">Ctrl + V cola prints · Ctrl + Enter envia</span>
 
                       <button
                         type="button"
@@ -2295,29 +2333,24 @@ function closeContract(): void {
                             v-if="update.attachments.length"
                             class="audit-update-attachments"
                           >
-                            <button
-                              v-for="attachment in update.attachments"
-                              :key="attachment.id"
-                              type="button"
-                              class="audit-update-attachment"
-                              @click="openAttachment(attachment)"
-                            >
-                              <img
-                                v-if="isImageAttachment(attachment)"
-                                :src="attachment.url"
-                                :alt="attachment.name"
-                                class="audit-update-image"
+                            <template v-for="attachment in update.attachments" :key="attachment.id">
+                              <AuditAttachmentImage
+                                v-if="isPreviewableImage(attachment)"
+                                :attachment="attachment"
                               />
-
-                              <template v-else>
+                              <button
+                                v-else
+                                type="button"
+                                class="audit-update-attachment"
+                                @click="openAttachment(attachment)"
+                              >
                                 <span class="audit-update-file-icon">📎</span>
-
                                 <div>
                                   <strong>{{ attachment.name }}</strong>
                                   <small>{{ formatFileSize(attachment.size) }}</small>
                                 </div>
-                              </template>
-                            </button>
+                              </button>
+                            </template>
                           </div>
                         </div>
                       </div>
@@ -2345,36 +2378,32 @@ function closeContract(): void {
                   v-else
                   class="audit-files-list"
                 >
-                  <button
+                  <div
                     v-for="file in selectedContractFiles"
-                    :key="`${file.updateId}-${file.id}`"
-                    type="button"
-                    class="audit-file-card"
-                    @click="openAttachment(file)"
+                    :key="file.updateId + '-' + file.id"
+                    class="audit-file-record"
                   >
-                    <img
-                      v-if="isImageAttachment(file)"
-                      :src="file.url"
-                      :alt="file.name"
-                      class="audit-file-card-preview"
+                    <AuditAttachmentImage
+                      v-if="isPreviewableImage(file)"
+                      :attachment="file"
+                      variant="file"
                     />
-
-                    <span
+                    <button
                       v-else
-                      class="audit-file-card-icon"
+                      type="button"
+                      class="audit-file-card"
+                      @click="openAttachment(file)"
                     >
-                      📎
-                    </span>
-
-                    <div>
-                      <strong>{{ file.name }}</strong>
-                      <span>
-                        {{ formatFileSize(file.size) }} ·
-                        {{ file.author }} ·
-                        {{ formatAuditDate(file.createdAt) }}
-                      </span>
-                    </div>
-                  </button>
+                      <span class="audit-file-card-icon">📎</span>
+                      <div>
+                        <strong>{{ file.name }}</strong>
+                        <span>{{ formatFileSize(file.size) }} · {{ file.author }} · {{ formatAuditDate(file.createdAt) }}</span>
+                      </div>
+                    </button>
+                    <p v-if="isPreviewableImage(file)" class="audit-file-image-meta">
+                      {{ file.author }} · {{ formatAuditDate(file.createdAt) }}
+                    </p>
+                  </div>
                 </div>
               </template>
 
@@ -4129,6 +4158,30 @@ function closeContract(): void {
   display: none;
 }
 
+.audit-pending-image-preview {
+  display: block;
+  max-width: min(100%, 180px);
+  max-height: 125px;
+  border-radius: 7px;
+  object-fit: contain;
+  background: #eef2f7;
+  border: 1px solid #e2e8f0;
+}
+.audit-attachment-error {
+  margin: 0 12px 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 600;
+}
+.audit-file-record { min-width: 0; }
+.audit-file-image-meta {
+  margin: 6px 2px 0;
+  color: #8795a7;
+  font-size: 10px;
+}
 .audit-pending-files {
   display: grid;
   gap: 7px;
