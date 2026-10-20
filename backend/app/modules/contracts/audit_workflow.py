@@ -73,13 +73,26 @@ def kanban_entry_stage(
     return None
 
 
-def sync_contract_audit_stage(item: Contract, *, deadline_changed: bool = False) -> None:
-    """Mantém entrada automática de vencidos/quase vencidos sem apagar o fluxo manual.
+def sync_contract_audit_stage(
+    item: Contract, *, deadline_changed: bool = False, regularization_completed: bool = False
+) -> None:
+    """Sincroniza a entrada automática e a saída após regularização.
 
-    A Auditoria passou a aceitar todos os contratos. Por isso uma renovação de
-    vigência não pode mais remover silenciosamente uma etapa escolhida pelo time.
+    Um contrato em "Aguardando Análise" retorna a "Não iniciado" quando a
+    regularização é concluída e o alerta passa a "Regular". Etapas manuais
+    avançadas não são alteradas por essa conclusão.
     """
     underlying_alert = alert_without_finalization(item)
+
+    if (
+        regularization_completed
+        and item.auditStage == AWAITING_ANALYSIS
+        and underlying_alert == "Regular"
+        and not item.finalized
+    ):
+        item.auditStage = None
+        item.auditStageEnteredAt = None
+        return
 
     if deadline_changed and underlying_alert != "Vencido":
         item.finalized = False
