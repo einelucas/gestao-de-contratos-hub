@@ -114,6 +114,7 @@ class AuditBoardOut(CamelModel):
     units: list[str]
     users: list[AuditUserOut] = Field(default_factory=list)
     current_user_id: str
+    mention_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class AuditUserOut(CamelModel):
@@ -122,6 +123,7 @@ class AuditUserOut(CamelModel):
     email: str
     role: str
     active: bool
+    image: str | None = None
 
 
 class AuditAttachmentOut(CamelModel):

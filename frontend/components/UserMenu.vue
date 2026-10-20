@@ -15,6 +15,9 @@ function initials(name: string): string {
 }
 
 const { store, logout } = useAuth();
+// TEMP-AVATAR (remover na versão final): usa a foto trocada pelo botão "Registro de Atividades".
+const temporaryAvatar = useTemporaryAvatar();
+const avatarImage = computed(() => temporaryAvatar.imageFor(store.user?.id));
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 
@@ -47,11 +50,18 @@ async function handleLogout() {
       @click="open = !open"
     >
       <span
-        class="relative flex size-10 items-center justify-center rounded-full bg-primary/10 text-[13px] font-bold text-primary"
+        class="relative flex size-10 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[13px] font-bold text-primary"
       >
-        {{ initials(store.user?.name || "?") }}
+        <!-- TEMP-AVATAR (remover na versão final) -->
+        <img
+          v-if="avatarImage"
+          :src="avatarImage"
+          :alt="store.user?.name"
+          class="absolute inset-0 size-full object-cover"
+        />
+        <template v-else>{{ initials(store.user?.name || "?") }}</template>
         <span
-          class="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-background bg-success"
+          class="absolute bottom-0 right-0 z-10 size-2.5 rounded-full border-2 border-background bg-success"
         />
       </span>
       <ChevronDown class="size-3.5 text-muted-foreground" />

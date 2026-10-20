@@ -91,6 +91,7 @@ export interface AuditBoard {
   units: string[];
   users: AuditUser[];
   currentUserId: string;
+  mentionCounts: Record<string, number>;
 }
 
 export interface AuditUser {
@@ -99,6 +100,7 @@ export interface AuditUser {
   email: string;
   role: string;
   active: boolean;
+  image?: string | null;
 }
 
 export interface AuditAttachment {

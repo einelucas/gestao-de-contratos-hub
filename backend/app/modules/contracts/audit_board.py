@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import cast
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import Text, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -113,6 +113,18 @@ async def get_board(session: AsyncSession, actor: CurrentUser) -> AuditBoardOut:
         (await session.execute(select(User).where(User.active.is_(True)).order_by(User.name))).scalars().all()
     )
     units = sorted({item.unit for item in items if item.unit}, key=str.casefold)
+    visible_ids = {item.id for item in items}
+    mention_rows = (
+        await session.execute(
+            select(ContractAuditUpdate.contractId, func.count(ContractAuditUpdate.id))
+            .where(
+                ContractAuditUpdate.authorId != actor.id,
+                func.cast(ContractAuditUpdate.mentionedUserIds, Text).like(f'%"{actor.id}"%'),
+            )
+            .group_by(ContractAuditUpdate.contractId)
+        )
+    ).all()
+    mention_counts = {contract_id: count for contract_id, count in mention_rows if contract_id in visible_ids}
     return AuditBoardOut(
         items=items,
         units=units,
@@ -123,10 +135,12 @@ async def get_board(session: AsyncSession, actor: CurrentUser) -> AuditBoardOut:
                 email=user.email,
                 role=user.role.value,
                 active=user.active,
+                image=user.image,
             )
             for user in users
         ],
         current_user_id=actor.id,
+        mention_counts=mention_counts,
     )
 
 

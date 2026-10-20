@@ -51,6 +51,72 @@ async def test_overdue_contract_enters_awaiting_analysis_automatically(
     assert response.json()["users"]
 
 
+async def test_contracts_inside_five_day_window_enter_awaiting_analysis(
+    client, auth_header, db_session
+) -> None:
+    sector = Sector(slug="obras", name="Obras", acronym="OBR")
+    supplier = Supplier(name="Fornecedor Kanban")
+    db_session.add_all([sector, supplier])
+    await db_session.flush()
+    today = contracts_today()
+
+    def contract(number: str, days_to_end: int, **extra) -> Contract:
+        return Contract(
+            sectorId=sector.id,
+            supplierId=supplier.id,
+            contractNumber=number,
+            endDate=today + timedelta(days=days_to_end),
+            **extra,
+        )
+
+    due_today = contract("D-0", 0)
+    due_in_five = contract("D-5", 5)
+    due_in_six = contract("D-6", 6)
+    already_started = contract("D-3", 3, auditStage="EM_TRATATIVA")
+    finalized_near = contract("D-4", 4, finalized=True)
+    dilated = contract(
+        "D-2",
+        2,
+        dilation=True,
+        dilationEndDate=today + timedelta(days=60),
+    )
+    db_session.add_all([due_today, due_in_five, due_in_six, already_started, finalized_near, dilated])
+    await db_session.commit()
+
+    response = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+
+    assert response.status_code == 200
+    stages = {item["id"]: item["auditStage"] for item in response.json()["items"]}
+    assert stages[due_today.id] == "AGUARDANDO_ANALISE"
+    assert stages[due_in_five.id] == "AGUARDANDO_ANALISE"
+    assert stages[due_in_six.id] is None
+    assert stages[already_started.id] == "EM_TRATATIVA"
+    assert stages[finalized_near.id] is None
+    assert stages[dilated.id] is None
+
+
+async def test_new_contract_inside_five_day_window_starts_in_awaiting_analysis(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    response = await client.post(
+        "/api/v1/contratos",
+        json={
+            "sectorId": ids["sector"],
+            "supplier": "Fornecedor Kanban",
+            "contractNumber": "NOVO-5",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "endDate": (contracts_today() + timedelta(days=3)).isoformat(),
+        },
+        headers=auth_header("ADMIN"),
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["auditStage"] == "AGUARDANDO_ANALISE"
+    assert response.json()["auditStageEnteredAt"]
+
+
 async def test_moving_to_finalized_updates_contract_and_moving_back_reopens_it(
     client, auth_header, db_session
 ) -> None:
@@ -163,3 +229,34 @@ async def test_board_and_moves_respect_sector_permissions(client, auth_header, d
     assert board.status_code == 200
     assert board.json()["items"][0]["canEdit"] is False
     assert move.status_code == 403
+
+
+async def test_board_reports_mentions_for_current_user(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    viewer = (await client.get("/api/v1/auth/me", headers=auth_header("VIEWER"))).json()
+    db_session.add(
+        UserSectorPermission(
+            userId=viewer["id"], sectorId=ids["sector"], canView=True, canEdit=False
+        )
+    )
+    await db_session.commit()
+
+    created = await client.post(
+        f"/api/v1/contratos/{ids['regular']}/auditoria/atualizacoes",
+        data={
+            "text": f"Validar com @{viewer['name']}",
+            "mentionedUserIds": f'["{viewer["id"]}"]',
+        },
+        headers=auth_header("ADMIN"),
+    )
+
+    viewer_board = await client.get(BOARD_URL, headers=auth_header("VIEWER"))
+    admin_board = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+
+    assert created.status_code == 201, created.text
+    assert created.json()["mentionedUserIds"] == [viewer["id"]]
+    assert viewer_board.status_code == 200
+    assert viewer_board.json()["mentionCounts"] == {ids["regular"]: 1}
+    assert admin_board.json()["mentionCounts"] == {}

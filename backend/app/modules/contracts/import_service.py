@@ -30,7 +30,7 @@ from app.models.contracts import (
     Sector,
     Supplier,
 )
-from app.modules.contracts.audit_workflow import AWAITING_ANALYSIS
+from app.modules.contracts.audit_workflow import kanban_entry_stage
 from app.modules.contracts.overdue_history import _RECONCILE_LOCK_KEY
 from app.modules.contracts.rules import contracts_today
 from app.shared.audit import record_audit
@@ -451,10 +451,9 @@ async def confirm(
                 endDate=row.end_date,
                 unit=row.unit,
                 finalized=row.finalized,
-                auditStage=(
-                    AWAITING_ANALYSIS
-                    if not row.finalized and row.end_date is not None and row.end_date < contracts_today()
-                    else None
+                auditStage=kanban_entry_stage(
+                    finalized=row.finalized,
+                    end_date=row.end_date,
                 ),
                 criticality=row.criticality,
                 autoRenewal=row.auto_renewal,

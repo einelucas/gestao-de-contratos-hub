@@ -1,19 +1,17 @@
 <script setup lang="ts">
 
 import {
-
+  AtSign,
   Building2,
-
   CalendarDays,
-
-
-
+  Loader2,
+  Paperclip,
+  Pencil,
   RefreshCw,
-
   Search,
-
+  Send,
+  Trash2,
   WalletCards,
-
 } from "lucide-vue-next";
 
 import type {
@@ -52,6 +50,9 @@ const STAGES: Array<{ key: UiAuditStage; label: string; color: string }> = [
 ];
 
 const api = useApi();
+
+// TEMP-AVATAR (remover na versão final): foto de perfil trocada pelo botão "Registro de Atividades".
+const temporaryAvatar = useTemporaryAvatar();
 
 const items = ref<Contract[]>([]);
 
@@ -105,6 +106,10 @@ type AuditTab = "updates" | "files" | "activity";
 
 const activeAuditTab = ref<AuditTab>("updates");
 const newUpdateText = ref("");
+const publishing = ref(false);
+const publishNotice = ref("");
+const savingEdit = ref(false);
+let publishNoticeTimer: ReturnType<typeof setTimeout> | undefined;
 const auditUpdates = ref<AuditUpdate[]>([]);
 type PendingAttachment = AuditAttachment & { file: File };
 const pendingAttachments = ref<PendingAttachment[]>([]);
@@ -116,6 +121,7 @@ const editingUpdateText = ref("");
 const MAX_ATTACHMENT_BYTES = 5_000_000;
 const users = ref<AuditUser[]>([]);
 const currentUserId = ref("");
+const mentionCounts = ref<Record<string, number>>({});
 const auditActivity = ref<AuditActivity[]>([]);
 
 const compactMode = ref(false);
@@ -143,6 +149,149 @@ function userName(userId: string | null | undefined): string {
   return users.value.find((user) => user.id === userId)?.name ?? "Usuário";
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Administrador",
+  ANALYST: "Analista",
+  VIEWER: "Visualizador",
+};
+
+// Avatares sem foto: cor derivada do nome, para a mesma pessoa manter a
+// identidade visual em todos os comentários.
+const AVATAR_COLORS = [
+  { from: "#40608f", to: "#2b456b" },
+  { from: "#149b8c", to: "#0c6f66" },
+  { from: "#9a63d6", to: "#7442b0" },
+  { from: "#c58a1f", to: "#9b6a10" },
+  { from: "#d45b73", to: "#a83e55" },
+  { from: "#3b82f6", to: "#2560bd" },
+  { from: "#3f9a5b", to: "#2c7443" },
+  { from: "#64748b", to: "#475569" },
+] as const;
+
+function userById(userId: string | null | undefined): AuditUser | null {
+  return userId ? (users.value.find((user) => user.id === userId) ?? null) : null;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  const first = parts[0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1] ?? first) : first;
+  return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+}
+
+function avatarStyle(seed: string): Record<string, string> {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  const color = AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? AVATAR_COLORS[0];
+  return { backgroundImage: `linear-gradient(135deg, ${color.from}, ${color.to})` };
+}
+
+function avatarImage(userId: string | null | undefined): string | undefined {
+  // TEMP-AVATAR (remover na versão final): prioriza a foto local do próprio usuário.
+  return temporaryAvatar.imageFor(userId, userById(userId)?.image);
+}
+
+function authorRole(userId: string | null | undefined): string {
+  const user = userById(userId);
+  if (!user) return "";
+  return ROLE_LABELS[user.role] ?? user.role;
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+function relativeAuditDate(value: Date | string): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const diff = Math.max(0, stageClock.value - date.getTime());
+  if (diff < MINUTE_MS) return "agora";
+  if (diff < HOUR_MS) return `há ${Math.floor(diff / MINUTE_MS)} min`;
+  if (diff < DAY_MS) return `há ${Math.floor(diff / HOUR_MS)} h`;
+  if (diff < 7 * DAY_MS) return `há ${Math.floor(diff / DAY_MS)} d`;
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(date);
+}
+
+function wasEdited(update: AuditUpdate): boolean {
+  return new Date(update.updatedAt).getTime() - new Date(update.createdAt).getTime() > MINUTE_MS;
+}
+
+const currentUser = computed(() => userById(currentUserId.value));
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Nomes ordenados do maior para o menor: "@Ana Paula" é reconhecido como uma
+// menção só, sem casar antes com uma usuária chamada apenas "Ana".
+const mentionPattern = computed<RegExp | null>(() => {
+  const names = activeUsers.value
+    .map((user) => user.name.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp);
+  if (!names.length) return null;
+  return new RegExp(`@(?:${names.join("|")})(?![\\p{L}\\p{N}])`, "giu");
+});
+
+function mentionedUsersIn(textValue: string): AuditUser[] {
+  const pattern = mentionPattern.value;
+  if (!pattern || !textValue.includes("@")) return [];
+  const found = new Map<string, AuditUser>();
+  for (const match of textValue.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    // Evita casar com e-mails (ex.: contato@Ana) — menção precisa começar
+    // no início do texto ou depois de espaço/pontuação.
+    if (index > 0 && /[\p{L}\p{N}_]/u.test(textValue.charAt(index - 1))) {
+      continue;
+    }
+    const name = match[0].slice(1).toLocaleLowerCase("pt-BR");
+    const user = activeUsers.value.find(
+      (candidate) => candidate.name.toLocaleLowerCase("pt-BR") === name,
+    );
+    if (user) found.set(user.id, user);
+  }
+  return [...found.values()];
+}
+
+type CommentSegment = { text: string; mention: boolean };
+
+function commentSegments(textValue: string): CommentSegment[] {
+  const pattern = mentionPattern.value;
+  if (!pattern || !textValue.includes("@")) {
+    return [{ text: textValue, mention: false }];
+  }
+  const segments: CommentSegment[] = [];
+  let cursor = 0;
+  for (const match of textValue.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > 0 && /[\p{L}\p{N}_]/u.test(textValue.charAt(index - 1))) {
+      continue;
+    }
+    if (index > cursor) {
+      segments.push({ text: textValue.slice(cursor, index), mention: false });
+    }
+    segments.push({ text: match[0], mention: true });
+    cursor = index + match[0].length;
+  }
+  if (cursor < textValue.length) {
+    segments.push({ text: textValue.slice(cursor), mention: false });
+  }
+  return segments;
+}
+
+function mentionsCurrentUser(update: AuditUpdate): boolean {
+  return (
+    Boolean(currentUserId.value) &&
+    update.authorId !== currentUserId.value &&
+    update.mentionedUserIds.includes(currentUserId.value)
+  );
+}
+
+const draftMentions = computed(() => mentionedUsersIn(newUpdateText.value));
+
 const selectedContractActivity = computed(() => {
   if (!selectedContract.value) return [];
 
@@ -154,11 +303,8 @@ const selectedContractActivity = computed(() => {
     );
 });
 
-const myMentionCount = computed(
-  () =>
-    auditUpdates.value.filter((update) =>
-      update.mentionedUserIds.includes(currentUserId.value),
-    ).length,
+const myMentionCount = computed(() =>
+  Object.values(mentionCounts.value).reduce((total, count) => total + count, 0),
 );
 
 const selectedContractUpdates = computed(() => {
@@ -186,24 +332,34 @@ const selectedContractFiles = computed(() => {
 });
 
 function detectMentionedUsers(textValue: string): string[] {
-  return activeUsers.value
-    .filter((user) =>
-      textValue.toLocaleLowerCase("pt-BR").includes(
-        `@${user.name}`.toLocaleLowerCase("pt-BR"),
-      ),
-    )
-    .map((user) => user.id);
+  return mentionedUsersIn(textValue).map((user) => user.id);
+}
+
+function showPublishNotice(message: string): void {
+  publishNotice.value = message;
+  if (publishNoticeTimer) clearTimeout(publishNoticeTimer);
+  publishNoticeTimer = setTimeout(() => {
+    publishNotice.value = "";
+  }, 5000);
 }
 
 async function publishUpdate(): Promise<void> {
+  // Trava de reentrada: clique duplo (ou Ctrl+Enter repetido) publica uma vez só.
+  if (publishing.value) return;
+
   const contract = selectedContract.value;
   const textValue = newUpdateText.value.trim();
 
   if (!contract || (!textValue && pendingAttachments.value.length === 0)) return;
+
+  const mentions = mentionedUsersIn(textValue);
   const form = new FormData();
   form.append("text", textValue);
-  form.append("mentionedUserIds", JSON.stringify(detectMentionedUsers(textValue)));
+  form.append("mentionedUserIds", JSON.stringify(mentions.map((user) => user.id)));
   for (const attachment of pendingAttachments.value) form.append("files", attachment.file);
+
+  publishing.value = true;
+  publishNotice.value = "";
 
   try {
     const created = await api.request<AuditUpdate>(
@@ -217,8 +373,15 @@ async function publishUpdate(): Promise<void> {
     mentionSearch.value = "";
     cancelEditUpdate();
     await loadWorkspace(contract.id);
+    showPublishNotice(
+      mentions.length
+        ? `Atualização publicada. Menção registrada para ${mentions.map((user) => `@${user.name}`).join(", ")}.`
+        : "Atualização publicada.",
+    );
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : "Não foi possível publicar a atualização.";
+  } finally {
+    publishing.value = false;
   }
 }
 
@@ -232,15 +395,53 @@ function insertMention(): void {
   });
 }
 
-function selectMention(user: AuditUser): void {
-  const current = newUpdateText.value;
-  const needsSpace = current.length > 0 && !current.endsWith(" ");
-  newUpdateText.value = `${current}${needsSpace ? " " : ""}@${user.name} `;
+// Abre a lista de usuários automaticamente ao digitar "@" e filtra pelo que
+// vem depois dele (ex.: "@an" sugere Ana, Ana Paula...).
+function onUpdateTextInput(event: Event): void {
+  const target = event.target as HTMLTextAreaElement;
+  const cursor = target.selectionStart ?? target.value.length;
+  const beforeCursor = target.value.slice(0, cursor);
+  const match = /(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}]*)$/u.exec(beforeCursor);
 
+  if (!match) {
+    mentionOpen.value = false;
+    return;
+  }
+
+  mentionOpen.value = true;
+  mentionSearch.value = match[1] ?? "";
+}
+
+// Enter com a lista de menções aberta escolhe o primeiro usuário em vez de
+// quebrar linha; sem a lista aberta, Enter continua criando nova linha.
+function onMentionEnter(event: KeyboardEvent): void {
+  if (!mentionOpen.value) return;
+
+  const first = filteredMentionUsers.value[0];
+  if (!first) return;
+
+  event.preventDefault();
+  selectMention(first);
+}
+
+function selectMention(user: AuditUser): void {
+  const element = updateTextarea.value;
+  const text = newUpdateText.value;
+  const caret = element?.selectionStart ?? text.length;
+  const beforeCaret = text.slice(0, caret);
+  const match = /(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}]*)$/u.exec(beforeCaret);
+  const start = match ? caret - (match[1]?.length ?? 0) - 1 : caret;
+  const nextText = `${text.slice(0, start)}@${user.name} ${text.slice(caret)}`;
+
+  newUpdateText.value = nextText;
   mentionOpen.value = false;
   mentionSearch.value = "";
 
-  nextTick(() => updateTextarea.value?.focus());
+  const position = start + user.name.length + 2;
+  nextTick(() => {
+    element?.focus();
+    element?.setSelectionRange(position, position);
+  });
 }
 
 function openAttachmentPicker(): void {
@@ -312,10 +513,14 @@ function cancelEditUpdate(): void {
 }
 
 async function saveEditUpdate(updateId: string): Promise<void> {
+  if (savingEdit.value) return;
+
   const textValue = editingUpdateText.value.trim();
   const update = auditUpdates.value.find((item) => item.id === updateId);
 
   if (!update || !textValue) return;
+
+  savingEdit.value = true;
 
   try {
     const edited = await api.patch<AuditUpdate>(
@@ -327,6 +532,8 @@ async function saveEditUpdate(updateId: string): Promise<void> {
     await loadWorkspace(update.contractId);
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : "Não foi possível editar a atualização.";
+  } finally {
+    savingEdit.value = false;
   }
 }
 
@@ -497,6 +704,7 @@ async function load(): Promise<void> {
     units.value = auditResponse.units;
     users.value = auditResponse.users;
     currentUserId.value = auditResponse.currentUserId;
+    mentionCounts.value = auditResponse.mentionCounts ?? {};
 
     ensureStageTiming(items.value);
 
@@ -561,6 +769,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearInterval(stageClockTimer);
   window.removeEventListener("keydown", handleAuditKeydown);
+  if (publishNoticeTimer) clearTimeout(publishNoticeTimer);
 });
 
 const filtered = computed(() => {
@@ -582,12 +791,7 @@ const filtered = computed(() => {
       comments.includes(query);
 
     const matchesMention =
-      !mentionsOnly.value ||
-      auditUpdates.value.some(
-        (update) =>
-          update.contractId === item.id &&
-          update.mentionedUserIds.includes(currentUserId.value),
-      );
+      !mentionsOnly.value || (mentionCounts.value[item.id] ?? 0) > 0;
 
     return (
       (unit.value === "Todas" || item.unit === unit.value) &&
@@ -1050,6 +1254,7 @@ function closeContract(): void {
             type="button"
             class="btn"
             :class="{ active: mentionsOnly }"
+            title="Contratos com comentários que mencionam você"
             @click="mentionsOnly = !mentionsOnly"
           >
             @ Menções
@@ -1627,95 +1832,141 @@ function closeContract(): void {
 
             <div class="audit-update-body">
               <template v-if="activeAuditTab === 'updates'">
+                <p v-if="publishNotice" class="audit-publish-notice" role="status">
+                  {{ publishNotice }}
+                </p>
+
                 <div class="audit-update-composer">
-                  <textarea
-                    ref="updateTextarea"
-                    v-model="newUpdateText"
-                    placeholder="Escreva uma atualização e mencione outros usuários com @"
-                    @keydown.ctrl.enter="publishUpdate"
-                  />
-
-                  <div v-if="mentionOpen" class="audit-mention-picker">
-                    <input
-                      v-model="mentionSearch"
-                      type="search"
-                      placeholder="Buscar usuário para mencionar"
+                  <div
+                    class="audit-composer-avatar"
+                    :style="avatarStyle(currentUser?.id ?? currentUserId)"
+                    aria-hidden="true"
+                  >
+                    <img
+                      v-if="avatarImage(currentUserId)"
+                      :src="avatarImage(currentUserId)"
+                      :alt="currentUser?.name ?? 'Seu avatar'"
                     />
-
-                    <button
-                      v-for="user in filteredMentionUsers"
-                      :key="user.id"
-                      type="button"
-                      @click="selectMention(user)"
-                    >
-                      <strong>{{ user.name }}</strong>
-                      <span>{{ user.role }}</span>
-                    </button>
-
-                    <p v-if="!filteredMentionUsers.length">
-                      Nenhum usuário encontrado.
-                    </p>
+                    <span v-else>{{ currentUser ? initials(currentUser.name) : "?" }}</span>
                   </div>
 
-                  <div
-                    v-if="pendingAttachments.length"
-                    class="audit-pending-files"
-                  >
-                    <div
-                      v-for="attachment in pendingAttachments"
-                      :key="attachment.id"
-                      class="audit-pending-file"
-                    >
-                      <span class="audit-file-icon">📎</span>
+                  <div class="audit-composer-main">
+                    <textarea
+                      ref="updateTextarea"
+                      v-model="newUpdateText"
+                      :readonly="publishing"
+                      placeholder="Escreva uma atualização e mencione outros usuários com @"
+                      @input="onUpdateTextInput"
+                      @keydown.ctrl.enter="publishUpdate"
+                      @keydown.enter.exact="onMentionEnter"
+                      @keydown.esc="mentionOpen = false"
+                    />
 
-                      <div>
-                        <strong>{{ attachment.name }}</strong>
-                        <span>{{ formatFileSize(attachment.size) }}</span>
+                    <div v-if="mentionOpen" class="audit-mention-picker">
+                      <input
+                        v-model="mentionSearch"
+                        type="search"
+                        placeholder="Buscar usuário para mencionar"
+                      />
+
+                      <button
+                        v-for="user in filteredMentionUsers"
+                        :key="user.id"
+                        type="button"
+                        :disabled="publishing"
+                        @click="selectMention(user)"
+                      >
+                        <strong>{{ user.name }}</strong>
+                        <span>{{ ROLE_LABELS[user.role] ?? user.role }}</span>
+                      </button>
+
+                      <p v-if="!filteredMentionUsers.length">
+                        Nenhum usuário encontrado.
+                      </p>
+                    </div>
+
+                    <p
+                      v-if="draftMentions.length"
+                      class="audit-composer-mentions"
+                    >
+                      Menção para
+                      <span
+                        v-for="user in draftMentions"
+                        :key="user.id"
+                      >
+                        @{{ user.name }}
+                      </span>
+                      <em>— aparece no filtro “Menções” dele.</em>
+                    </p>
+
+                    <div
+                      v-if="pendingAttachments.length"
+                      class="audit-pending-files"
+                    >
+                      <div
+                        v-for="attachment in pendingAttachments"
+                        :key="attachment.id"
+                        class="audit-pending-file"
+                      >
+                        <span class="audit-file-icon">📎</span>
+
+                        <div>
+                          <strong>{{ attachment.name }}</strong>
+                          <span>{{ formatFileSize(attachment.size) }}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          aria-label="Remover anexo"
+                          @click="removePendingAttachment(attachment.id)"
+                        >
+                          ×
+                        </button>
                       </div>
+                    </div>
+
+                    <input
+                      ref="attachmentInput"
+                      class="audit-file-input"
+                      type="file"
+                      multiple
+                      @change="onAttachmentSelected"
+                    />
+
+                    <div class="audit-update-actions">
+                      <button
+                        type="button"
+                        class="audit-text-action"
+                        :disabled="publishing"
+                        @click="insertMention"
+                      >
+                        <AtSign />
+                        Mencionar
+                      </button>
 
                       <button
                         type="button"
-                        aria-label="Remover anexo"
-                        @click="removePendingAttachment(attachment.id)"
+                        class="audit-text-action"
+                        :disabled="publishing"
+                        @click="openAttachmentPicker"
                       >
-                        ×
+                        <Paperclip />
+                        Anexar
+                      </button>
+
+                      <span class="audit-composer-hint">Ctrl + Enter envia</span>
+
+                      <button
+                        type="button"
+                        class="audit-publish-button"
+                        :disabled="publishing || (!newUpdateText.trim() && pendingAttachments.length === 0)"
+                        @click="publishUpdate"
+                      >
+                        <Loader2 v-if="publishing" class="audit-spinner" />
+                        <Send v-else />
+                        {{ publishing ? "Enviando…" : "Publicar" }}
                       </button>
                     </div>
-                  </div>
-
-                  <input
-                    ref="attachmentInput"
-                    class="audit-file-input"
-                    type="file"
-                    multiple
-                    @change="onAttachmentSelected"
-                  />
-
-                  <div class="audit-update-actions">
-                    <button
-                      type="button"
-                      class="audit-text-action"
-                      @click="insertMention"
-                    >
-                      @ Mencionar
-                    </button>
-
-                    <button
-                      type="button"
-                      class="audit-text-action"
-                      @click="openAttachmentPicker"
-                    >
-                      📎 Anexar
-                    </button>
-
-                    <button
-                      type="button"
-                      class="audit-publish-button"
-                      :disabled="!newUpdateText.trim() && pendingAttachments.length === 0"
-                      @click="publishUpdate"
-                    >
-                      Publicar
-                    </button>
                   </div>
                 </div>
 
@@ -1770,89 +2021,148 @@ function closeContract(): void {
                       :key="update.id"
                       class="audit-update-item"
                     >
-                      <div class="audit-update-item-header">
-                        <div class="audit-update-author">
-                          <strong>{{ update.author }}</strong>
-                          <span>{{ formatAuditDate(update.createdAt) }}</span>
-                        </div>
-
-                        <div class="audit-update-item-actions">
-                          <button
-                            v-if="update.canEdit && editingUpdateId !== update.id"
-                            type="button"
-                            @click="startEditUpdate(update)"
-                          >
-                            Editar
-                          </button>
-
-                          <button
-                            v-if="update.canEdit && editingUpdateId !== update.id"
-                            type="button"
-                            class="danger"
-                            @click="deleteUpdate(update.id)"
-                          >
-                            Excluir
-                          </button>
-                        </div>
+                      <div
+                        class="audit-update-avatar"
+                        :style="avatarStyle(update.authorId ?? update.author)"
+                        aria-hidden="true"
+                      >
+                        <img
+                          v-if="avatarImage(update.authorId)"
+                          :src="avatarImage(update.authorId)"
+                          :alt="update.author"
+                        />
+                        <span v-else>{{ initials(update.author) }}</span>
                       </div>
 
-                      <template v-if="editingUpdateId === update.id">
-                        <textarea
-                          v-model="editingUpdateText"
-                          class="audit-edit-textarea"
-                        />
+                      <div class="audit-update-content">
+                        <div class="audit-update-item-header">
+                          <div class="audit-update-author">
+                            <strong>{{ update.author }}</strong>
 
-                        <div class="audit-edit-actions">
-                          <button
-                            type="button"
-                            class="btn small"
-                            @click="cancelEditUpdate"
-                          >
-                            Cancelar
-                          </button>
+                            <span class="audit-update-subtitle">
+                              <span
+                                v-if="authorRole(update.authorId)"
+                                class="audit-update-role"
+                              >
+                                {{ authorRole(update.authorId) }}
+                              </span>
 
-                          <button
-                            type="button"
-                            class="btn small"
-                            :disabled="!editingUpdateText.trim()"
-                            @click="saveEditUpdate(update.id)"
-                          >
-                            Salvar
-                          </button>
+                              <time
+                                :datetime="update.createdAt"
+                                :title="formatAuditDate(update.createdAt)"
+                              >
+                                {{ relativeAuditDate(update.createdAt) }}
+                              </time>
+
+                              <span v-if="wasEdited(update)" class="audit-update-edited">
+                                editado
+                              </span>
+
+                              <span
+                                v-if="mentionsCurrentUser(update)"
+                                class="audit-update-mentioned-you"
+                              >
+                                mencionou você
+                              </span>
+                            </span>
+                          </div>
+
+                          <div class="audit-update-item-actions">
+                            <button
+                              v-if="update.canEdit && editingUpdateId !== update.id"
+                              type="button"
+                              title="Editar comentário"
+                              aria-label="Editar comentário"
+                              @click="startEditUpdate(update)"
+                            >
+                              <Pencil class="audit-action-icon" />
+                            </button>
+
+                            <button
+                              v-if="update.canEdit && editingUpdateId !== update.id"
+                              type="button"
+                              class="danger"
+                              title="Excluir comentário"
+                              aria-label="Excluir comentário"
+                              @click="deleteUpdate(update.id)"
+                            >
+                              <Trash2 class="audit-action-icon" />
+                            </button>
+                          </div>
                         </div>
-                      </template>
 
-                      <p v-else-if="update.text">
-                        {{ update.text }}
-                      </p>
-
-                      <div
-                        v-if="update.attachments.length"
-                        class="audit-update-attachments"
-                      >
-                        <button
-                          v-for="attachment in update.attachments"
-                          :key="attachment.id"
-                          type="button"
-                          class="audit-update-attachment"
-                          @click="openAttachment(attachment)"
+                        <div
+                          class="audit-update-bubble"
+                          :class="{ 'audit-update-bubble-mentioned': mentionsCurrentUser(update) }"
                         >
-                          <img
-                            v-if="isImageAttachment(attachment)"
-                            :src="attachment.url"
-                            :alt="attachment.name"
-                            class="audit-update-image"
-                          />
+                          <template v-if="editingUpdateId === update.id">
+                            <textarea
+                              v-model="editingUpdateText"
+                              class="audit-edit-textarea"
+                            />
 
-                          <template v-else>
-                            <span class="audit-update-file-icon">📎</span>
+                            <div class="audit-edit-actions">
+                              <button
+                                type="button"
+                                class="btn small"
+                                @click="cancelEditUpdate"
+                              >
+                                Cancelar
+                              </button>
 
-                            <div>
-                              <strong>{{ attachment.name }}</strong>
-                              <small>{{ formatFileSize(attachment.size) }}</small>
+                              <button
+                                type="button"
+                                class="btn small"
+                                :disabled="savingEdit || !editingUpdateText.trim()"
+                                @click="saveEditUpdate(update.id)"
+                              >
+                                {{ savingEdit ? "Salvando…" : "Salvar" }}
+                              </button>
                             </div>
                           </template>
-                        </button>
+
+                          <p v-else-if="update.text" class="audit-update-text">
+                            <template
+                              v-for="(segment, index) in commentSegments(update.text)"
+                              :key="index"
+                            >
+                              <span
+                                v-if="segment.mention"
+                                class="audit-mention"
+                              >{{ segment.text }}</span>
+                              <template v-else>{{ segment.text }}</template>
+                            </template>
+                          </p>
+
+                          <div
+                            v-if="update.attachments.length"
+                            class="audit-update-attachments"
+                          >
+                            <button
+                              v-for="attachment in update.attachments"
+                              :key="attachment.id"
+                              type="button"
+                              class="audit-update-attachment"
+                              @click="openAttachment(attachment)"
+                            >
+                              <img
+                                v-if="isImageAttachment(attachment)"
+                                :src="attachment.url"
+                                :alt="attachment.name"
+                                class="audit-update-image"
+                              />
+
+                              <template v-else>
+                                <span class="audit-update-file-icon">📎</span>
+
+                                <div>
+                                  <strong>{{ attachment.name }}</strong>
+                                  <small>{{ formatFileSize(attachment.size) }}</small>
+                                </div>
+                              </template>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </article>
                   </div>
@@ -3174,21 +3484,37 @@ function closeContract(): void {
 
 .audit-update-composer {
 
-  margin: 22px 24px;
+  display: flex;
+
+  align-items: flex-start;
+
+  gap: 10px;
+
+  margin: 20px 24px 18px;
+
+}
+
+.audit-composer-main {
+
+  min-width: 0;
+
+  flex: 1;
 
   overflow: hidden;
 
   border: 1px solid #dce3ec;
 
-  border-radius: 11px;
+  border-radius: 14px;
 
   background: #fff;
 
   box-shadow: 0 3px 12px rgba(31, 48, 70, 0.04);
 
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
 }
 
-.audit-update-composer:focus-within {
+.audit-composer-main:focus-within {
 
   border-color: #9eb0c7;
 
@@ -3204,11 +3530,11 @@ function closeContract(): void {
 
   width: 100%;
 
-  min-height: 115px;
+  min-height: 84px;
 
   resize: vertical;
 
-  padding: 15px 16px;
+  padding: 12px 14px 6px;
 
   border: 0;
 
@@ -3250,11 +3576,17 @@ function closeContract(): void {
 
 .audit-text-action {
 
-  padding: 7px 8px;
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  padding: 7px 9px;
 
   border: 0;
 
-  border-radius: 6px;
+  border-radius: 7px;
 
   background: transparent;
 
@@ -3268,6 +3600,14 @@ function closeContract(): void {
 
 }
 
+.audit-text-action svg {
+
+  width: 13px;
+
+  height: 13px;
+
+}
+
 .audit-text-action:hover {
 
   background: #eef2f7;
@@ -3276,15 +3616,51 @@ function closeContract(): void {
 
 }
 
-.audit-publish-button {
+.audit-text-action:disabled {
+
+  opacity: 0.45;
+
+  cursor: not-allowed;
+
+}
+
+.audit-text-action:disabled:hover {
+
+  background: transparent;
+
+  color: #6f7f93;
+
+}
+
+.audit-composer-hint {
 
   margin-left: auto;
+
+  padding-right: 4px;
+
+  color: #9aa6b5;
+
+  font-size: 8.5px;
+
+  font-weight: 600;
+
+}
+
+.audit-publish-button {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  margin-left: 4px;
 
   padding: 8px 16px;
 
   border: 0;
 
-  border-radius: 7px;
+  border-radius: 999px;
 
   background: #304f7e;
 
@@ -3296,6 +3672,16 @@ function closeContract(): void {
 
   cursor: pointer;
 
+  transition: background 0.15s ease, opacity 0.15s ease;
+
+}
+
+.audit-publish-button svg {
+
+  width: 12px;
+
+  height: 12px;
+
 }
 
 .audit-publish-button:hover {
@@ -3304,11 +3690,201 @@ function closeContract(): void {
 
 }
 
+.audit-publish-button:disabled {
+
+  opacity: 0.45;
+
+  cursor: not-allowed;
+
+}
+
+.audit-spinner {
+  animation: audit-spin 0.8s linear infinite;
+}
+
+@keyframes audit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.audit-publish-button:disabled .audit-spinner {
+  opacity: 1;
+}
+
+.audit-composer-mentions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px 9px;
+  color: #7b8ba0;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.audit-composer-mentions span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e8f0fb;
+  color: #2f5fa8;
+  font-weight: 750;
+}
+
+.audit-composer-mentions em {
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 500;
+  color: #9aa6b5;
+}
+
+.audit-publish-notice {
+  margin: 10px 24px 0;
+  padding: 8px 12px;
+  border: 1px solid #cfe4d8;
+  border-radius: 8px;
+  background: #f0faf4;
+  color: #2c6e47;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.audit-mention {
+  padding: 0 2px;
+  border-radius: 4px;
+  background: #e8f0fb;
+  color: #2f5fa8;
+  font-weight: 750;
+}
+
+.audit-update-mentioned-you {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff4d6;
+  color: #8a6100;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.audit-update-bubble-mentioned {
+  border-color: #f0d68a;
+  background: #fffaf0;
+}
+
 /* TIMELINE */
 
 .audit-timeline {
 
-  padding: 0 24px 40px;
+  padding: 0 0 40px;
+
+}
+
+.audit-update-list {
+
+  display: grid;
+
+  gap: 16px;
+
+  padding: 6px 24px 0;
+
+}
+
+.audit-update-item {
+
+  display: flex;
+
+  align-items: flex-start;
+
+  gap: 10px;
+
+}
+
+.audit-update-avatar,
+.audit-composer-avatar {
+
+  display: grid;
+
+  width: 34px;
+
+  height: 34px;
+
+  flex: 0 0 34px;
+
+  place-items: center;
+
+  overflow: hidden;
+
+  border-radius: 50%;
+
+  background: #304f7e;
+
+  color: #fff;
+
+  font-size: 11px;
+
+  font-weight: 800;
+
+  letter-spacing: 0.02em;
+
+  box-shadow: 0 1px 5px rgba(23, 39, 61, 0.18);
+
+}
+
+.audit-update-avatar img,
+.audit-composer-avatar img {
+
+  width: 100%;
+
+  height: 100%;
+
+  object-fit: cover;
+
+}
+
+.audit-update-content {
+
+  min-width: 0;
+
+  flex: 1;
+
+}
+
+.audit-update-bubble {
+
+  margin-top: 5px;
+
+  padding: 10px 13px;
+
+  border: 1px solid #e4ebf3;
+
+  border-radius: 3px 14px 14px 14px;
+
+  background: #f4f7fb;
+
+}
+
+.audit-update-text {
+
+  margin: 0;
+
+  color: #2c405a;
+
+  font-size: 12px;
+
+  line-height: 1.65;
+
+  overflow-wrap: anywhere;
+
+  white-space: pre-wrap;
+
+}
+
+.audit-update-bubble .audit-update-attachment {
+
+  background: #fff;
 
 }
 
@@ -3454,16 +4030,11 @@ function closeContract(): void {
 }
 
 .audit-update-item-header {
-  margin-bottom: 9px;
-}
-
-.audit-update-item-header strong,
-.audit-update-item-header span {
-  display: block;
-}
-
-.audit-update-item-header span {
-  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1px 4px 0;
 }
 
 .audit-update-attachments {
@@ -3549,38 +4120,90 @@ function closeContract(): void {
 
 .audit-update-author {
   display: grid;
-  gap: 2px;
+  min-width: 0;
+  gap: 1px;
+}
+
+.audit-update-author strong {
+  overflow: hidden;
+  color: #263a53;
+  font-size: 11.5px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-update-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  color: #8a97a8;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.audit-update-role {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef2f8;
+  color: #5d7697;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.audit-update-edited {
+  font-style: italic;
 }
 
 .audit-update-item-actions {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex: 0 0 auto;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.audit-update-item:hover .audit-update-item-actions,
+.audit-update-item:focus-within .audit-update-item-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .audit-update-item-actions {
+    opacity: 1;
+  }
 }
 
 .audit-update-item-actions button {
-  padding: 5px 8px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
-  background: #eef2f7;
-  color: #53657d;
-  font-size: 9.5px;
-  font-weight: 700;
+  border-radius: 50%;
+  background: transparent;
+  color: #7b8ba0;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .audit-update-item-actions button:hover {
-  background: #e2e8f0;
+  background: #eef2f7;
   color: #304f7e;
 }
 
-.audit-update-item-actions button.danger {
-  background: #fff1f1;
+.audit-update-item-actions button.danger:hover {
+  background: #fff0f0;
   color: #b84b52;
 }
 
-.audit-update-item-actions button.danger:hover {
-  background: #fde5e5;
+.audit-action-icon {
+  width: 13px;
+  height: 13px;
 }
 
 .audit-edit-textarea {
