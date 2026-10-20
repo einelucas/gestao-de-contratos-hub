@@ -66,7 +66,6 @@ async def list_internal_notifications(
     items, unread_count = await service.inbox(
         session, actor, contract_id=contract_id, include_scheduled=include_scheduled and bool(contract_id)
     )
-    # selectinload pré-carrega contrato, mas fornecedor precisa ser carregado também.
     return InternalNotificationListOut(items=[to_out(item) for item in items], unread_count=unread_count)
 
 

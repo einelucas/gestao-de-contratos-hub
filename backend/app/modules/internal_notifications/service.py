@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,7 +31,7 @@ async def sync_mentions(
     contract = (await session.execute(
         select(Contract).where(Contract.id == update.contractId)
     )).scalar_one()
-    requested = set(update.mentionedUserIds or []) - {actor.id}
+    requested = set(update.mentionedUserIds or []) - {actor.id, update.authorId}
     allowed = set()
     if requested:
         users = (await session.execute(
@@ -81,11 +81,11 @@ async def inbox(
     if not include_scheduled:
         stmt = stmt.where(InAppNotification.scheduledAt <= utcnow())
     stmt = stmt.options(
-        selectinload(InAppNotification.contract), selectinload(InAppNotification.actor)
+        selectinload(InAppNotification.contract).selectinload(Contract.supplier),
+        selectinload(InAppNotification.actor)
     ).order_by(InAppNotification.scheduledAt.desc()).limit(150)
     items = (await session.execute(stmt)).scalars().all()
     # Contagem exata dos itens não lidos visíveis, sem o limite da lista.
-    from sqlalchemy import func
     count_query = select(func.count(InAppNotification.id)).select_from(InAppNotification).join(
         Contract, InAppNotification.contractId == Contract.id
     ).where(
