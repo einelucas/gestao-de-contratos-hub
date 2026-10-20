@@ -96,11 +96,15 @@ def sync_contract_audit_stage(
 
     if deadline_changed and underlying_alert != "Vencido":
         item.finalized = False
-        item.auditStage = None
-        item.auditStageEnteredAt = None
-        # A nova vigência ainda pode estar na janela de entrada automática.
-        _enter_awaiting_analysis_if_due(item)
-        return
+        # O retorno ao backlog é automático somente para quem ainda aguardava
+        # análise (ou estava finalizado e abriu um novo ciclo de vigência).
+        # Demais etapas já trabalhadas são decisões manuais e permanecem.
+        if item.auditStage in (None, AWAITING_ANALYSIS, FINALIZED):
+            item.auditStage = None
+            item.auditStageEnteredAt = None
+            # A nova vigência ainda pode estar na janela de entrada automática.
+            _enter_awaiting_analysis_if_due(item)
+            return
 
     if item.auditStage is None:
         _enter_awaiting_analysis_if_due(item)
