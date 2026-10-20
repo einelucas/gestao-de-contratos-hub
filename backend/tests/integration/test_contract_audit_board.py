@@ -234,6 +234,33 @@ async def test_regularization_does_not_reset_advanced_manual_audit_stages(
     assert regularized.json()["auditStage"] == "EM_TRATATIVA"
 
 
+async def test_renewing_contract_does_not_reset_advanced_manual_audit_stage(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    contract_url = f"/api/v1/contratos/{ids['overdue']}"
+    await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    moved = await client.patch(
+        f"{contract_url}/auditoria",
+        json={"stage": "EM_TRATATIVA"},
+        headers=auth_header("ADMIN"),
+    )
+    assert moved.status_code == 200
+
+    renewed = await client.patch(
+        contract_url,
+        json={"endDate": (contracts_today() + timedelta(days=120)).isoformat()},
+        headers=auth_header("ADMIN"),
+    )
+    assert renewed.status_code == 200, renewed.text
+    assert renewed.json()["alert"] == "Regular"
+    assert renewed.json()["auditStage"] == "EM_TRATATIVA"
+
+    board = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
+    row = next(item for item in board.json()["items"] if item["id"] == ids["overdue"])
+    assert row["auditStage"] == "EM_TRATATIVA"
+
+
 async def test_regularization_keeps_awaiting_when_contract_still_due_soon(
     client, auth_header, db_session
 ) -> None:
