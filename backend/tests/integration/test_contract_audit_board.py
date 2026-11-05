@@ -8,6 +8,7 @@ from app.models.contracts import Contract, Sector, Supplier, UserSectorPermissio
 from app.modules.contracts.rules import contracts_today
 
 BOARD_URL = "/api/v1/contratos/auditoria"
+SUMMARY_URL = "/api/v1/contratos/resumo"
 
 
 async def _seed(db_session) -> dict[str, str]:
@@ -107,7 +108,12 @@ async def test_new_contract_inside_five_day_window_starts_in_awaiting_analysis(
             "contractNumber": "NOVO-5",
             "serviceDescription": "Serviço",
             "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": contracts_today().isoformat(),
             "endDate": (contracts_today() + timedelta(days=3)).isoformat(),
+            "unit": "Balsas",
+            "criticality": "MEDIA",
         },
         headers=auth_header("ADMIN"),
     )
@@ -345,6 +351,61 @@ async def test_regular_contract_can_start_audit_and_workspace_is_persisted(
     )
     assert attachment.status_code == 200
     assert attachment.content == b"conteudo"
+
+
+async def test_audit_stages_count_as_regularization_without_reclassifying_overdue(
+    client, auth_header, db_session
+) -> None:
+    """Dashboard: etapas de Aguardando Análise até Em Tratativa são aditivas.
+
+    O contrato continua "Vencido" em todo o app (aba Contratos, sino etc.) e
+    também aparece em "Em regularização" no resumo — sem sair dos vencidos.
+    """
+    ids = await _seed(db_session)
+    move_url = f"/api/v1/contratos/{ids['overdue']}/auditoria"
+
+    for stage in (
+        "AGUARDANDO_ANALISE",
+        "ANALISE_INTERNA_INPASA",
+        "FORNECEDOR_CONTATADO",
+        "EM_TRATATIVA",
+    ):
+        moved = await client.patch(move_url, json={"stage": stage}, headers=auth_header("ADMIN"))
+        assert moved.status_code == 200, moved.text
+        assert moved.json()["alert"] == "Vencido"
+
+    summary = (await client.get(SUMMARY_URL, headers=auth_header("ADMIN"))).json()
+    assert summary["kpis"]["vencido"] == 1
+    assert summary["kpis"]["regularization"] == 1
+    by_status = {item["key"]: item["count"] for item in summary["byStatus"]}
+    assert by_status["Vencido"] == 1
+    # "Em regularização" não é um status exclusivo: não entra no donut.
+    assert by_status["Regularizacao"] == 0
+    regularization_by_status = {
+        item["key"]: item["count"] for item in summary["regularizationByStatus"]
+    }
+    assert regularization_by_status == {"Vencido": 1}
+    deadlines = {item["key"]: item["count"] for item in summary["deadlines"]}
+    assert deadlines["overdue"] == 1
+    # O contrato continua na faixa de vencidos; regularização é um recorte à parte.
+    assert "regularization" not in deadlines
+    unit = next(item for item in summary["byUnit"] if item["key"] == "Balsas")
+    assert unit["vencido"] == 1
+    assert unit["regularization"] == 1
+    month_key = (contracts_today() - timedelta(days=10)).strftime("%Y-%m")
+    month = next(item for item in summary["monthly"] if item["month"] == month_key)
+    assert month["overdue"] == 1
+    assert month["regularization"] == 0
+    assert month["upcoming"] == 0
+
+    after = await client.patch(
+        move_url, json={"stage": "EM_FINALIZACAO"}, headers=auth_header("ADMIN")
+    )
+    assert after.json()["alert"] == "Vencido"
+    summary_after = (await client.get(SUMMARY_URL, headers=auth_header("ADMIN"))).json()
+    assert summary_after["kpis"]["regularization"] == 0
+    assert summary_after["kpis"]["vencido"] == 1
+    assert summary_after["regularizationByStatus"] == []
 
 
 async def test_board_and_moves_respect_sector_permissions(client, auth_header, db_session) -> None:

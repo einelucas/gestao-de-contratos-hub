@@ -8,7 +8,7 @@ import type {
   NotificationTeam,
   Sector,
 } from "~/types/api";
-import { contractTeamProblem, money, type TeamsLoadStatus } from "~/utils/contracts";
+import { CONTRACT_UNITS, contractTeamProblem, money, type TeamsLoadStatus } from "~/utils/contracts";
 import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
 
 /**
@@ -86,6 +86,15 @@ function fromContract(contract: Contract): FormState {
 
 const form = reactive<FormState>(blank());
 let initial: FormState = { ...form };
+
+// Seletor fechado de unidade; mantém o valor atual ao editar registros antigos
+// cuja grafia ainda não esteja na lista padronizada.
+const unitOptions = computed(() => {
+  const units: string[] = [...CONTRACT_UNITS];
+  const current = form.unit.trim();
+  if (current && !units.includes(current)) units.push(current);
+  return units;
+});
 
 const editableSectors = computed(() =>
   props.sectors.filter((sector) => sector.canEdit || sector.id === props.contract?.sectorId),
@@ -169,9 +178,19 @@ const computedTotal = computed(
 );
 
 function validate(): string {
-  if (props.mode === "create" && !form.contractNumber.trim()) return "Informe o número do contrato.";
-  if (!form.sectorId) return "Selecione o setor.";
-  if (!form.supplier.trim()) return "Informe o fornecedor.";
+  if (props.mode === "create") {
+    if (!form.contractNumber.trim()) return "Informe o número do contrato.";
+    if (!form.sectorId) return "Selecione o setor.";
+    if (!form.supplier.trim()) return "Informe o fornecedor.";
+    if (!form.serviceDescription.trim()) return "Informe a prestação / objeto do contrato.";
+    if (!form.unit.trim()) return "Selecione a unidade.";
+    if (!form.startDate) return "Informe o início da vigência.";
+    if (!form.endDate) return "Informe o fim da vigência.";
+    if (!form.criticality) return "Selecione a criticidade do contrato.";
+  } else {
+    if (!form.sectorId) return "Selecione o setor.";
+    if (!form.supplier.trim()) return "Informe o fornecedor.";
+  }
   if (form.startDate && form.endDate && form.endDate < form.startDate)
     return "O fim da vigência não pode ser anterior ao início.";
   if (form.dilation && !form.endDate)
@@ -200,8 +219,8 @@ function createPayload(): ContractCreatePayload {
     supplier: form.supplier.trim(),
     serviceDescription: form.serviceDescription.trim(),
     unit: form.unit.trim(),
-    startDate: form.startDate || null,
-    endDate: form.endDate || null,
+    startDate: form.startDate,
+    endDate: form.endDate,
     finalized: form.finalized,
     dilation: form.dilation,
     dilationEndDate: form.dilation ? form.dilationEndDate : null,
@@ -211,7 +230,8 @@ function createPayload(): ContractCreatePayload {
     notify: form.notify,
     notificationTeamId: form.notificationTeamId || null,
     autoRenewal: form.autoRenewal,
-    criticality: form.criticality || null,
+    // A validação de criação exige criticidade; o cast reflete essa garantia.
+    criticality: form.criticality as ContractCriticality,
   };
 }
 
@@ -282,18 +302,26 @@ async function submit(): Promise<void> {
             <input v-else :value="editableSectors[0]?.name ?? ''" disabled />
           </label>
           <label class="span-2"><span>Fornecedor</span><input v-model="form.supplier" required maxlength="240" /></label>
-          <label class="span-2"><span>Prestação / objeto</span><textarea v-model="form.serviceDescription" rows="2" /></label>
-          <label><span>Unidade</span><input v-model="form.unit" maxlength="120" /></label>
+          <label class="span-2"><span>Prestação / objeto</span><textarea v-model="form.serviceDescription" rows="2" :required="mode === 'create'" /></label>
+          <label>
+            <span>Unidade</span>
+            <select v-model="form.unit" :required="mode === 'create'">
+              <option value="" disabled>Selecione a unidade</option>
+              <option v-for="option in unitOptions" :key="option" :value="option">
+                {{ option }}
+              </option>
+            </select>
+          </label>
           <label class="checkbox-field"><input v-model="form.finalized" type="checkbox" /><span>Contrato finalizado</span></label>
-          <label><span>Início da vigência</span><input v-model="form.startDate" type="date" /></label>
-          <label><span>Fim da vigência original</span><input v-model="form.endDate" type="date" /></label>
+          <label><span>Início da vigência</span><input v-model="form.startDate" type="date" :required="mode === 'create'" /></label>
+          <label><span>Fim da vigência original</span><input v-model="form.endDate" type="date" :required="mode === 'create'" /></label>
           <label class="checkbox-field"><input v-model="form.dilation" type="checkbox" /><span>Contrato em dilação</span></label>
           <label v-if="form.dilation"><span>Vigência da dilação até</span><input v-model="form.dilationEndDate" type="date" :min="form.endDate || undefined" /></label>
           <p v-if="form.dilation" class="form-hint span-2">Ao término da dilação, o contrato será considerado finalizado automaticamente e não passará por vencido.</p>
           <label>
             <span>Criticidade</span>
-            <select v-model="form.criticality">
-              <option value="">Não informada</option>
+            <select v-model="form.criticality" :required="mode === 'create'">
+              <option value="" :disabled="mode === 'create'">{{ mode === 'create' ? 'Selecione a criticidade' : 'Não informada' }}</option>
               <option v-for="(label, key) in CRITICALITY_LABEL" :key="key" :value="key">{{ label }}</option>
             </select>
           </label>
@@ -304,9 +332,9 @@ async function submit(): Promise<void> {
       <fieldset>
         <legend>Valores</legend>
         <div class="form-grid three">
-          <label><span>Serviço (R$)</span><input v-model.number="form.serviceValue" type="number" min="0" step="0.01" /></label>
-          <label><span>Material próprio (R$)</span><input v-model.number="form.ownMaterialValue" type="number" min="0" step="0.01" /></label>
-          <label><span>Material terceiros (R$)</span><input v-model.number="form.thirdPartyMaterialValue" type="number" min="0" step="0.01" /></label>
+          <label><span>Serviço (R$)</span><input v-model.number="form.serviceValue" type="number" min="0" step="0.01" :required="mode === 'create'" /></label>
+          <label><span>Material próprio (R$)</span><input v-model.number="form.ownMaterialValue" type="number" min="0" step="0.01" :required="mode === 'create'" /></label>
+          <label><span>Material terceiros (R$)</span><input v-model.number="form.thirdPartyMaterialValue" type="number" min="0" step="0.01" :required="mode === 'create'" /></label>
         </div>
         <p class="form-hint">
           <template v-if="mode === 'edit' && contract">Total atual: <strong>{{ money(contract.totalValue) }}</strong></template>

@@ -11,7 +11,6 @@ from app.shared.schema import CamelModel
 
 AuditStage = Literal[
     "AGUARDANDO_ANALISE",
-    "CHAMADO_ELES",
     "ANALISE_INTERNA_INPASA",
     "FORNECEDOR_CONTATADO",
     "EM_TRATATIVA",
@@ -209,6 +208,7 @@ class SummaryMonthOut(CamelModel):
     month: str
     label: str
     expiring: int
+    upcoming: int = 0
     overdue: int
     finalized: int
     regularization: int = 0
@@ -243,6 +243,7 @@ class ContractSummaryOut(CamelModel):
     unit: str | None
     kpis: SummaryKpisOut
     by_status: list[StatusCountOut]
+    regularization_by_status: list[StatusCountOut] = []
     by_sector: list[SummaryGroupOut]
     by_unit: list[SummaryGroupOut]
     monthly: list[SummaryMonthOut]
@@ -278,14 +279,15 @@ class ContractCreateIn(CamelModel):
     sector_id: str
     supplier: str = Field(min_length=1)
     contract_number: str = Field(min_length=1)
-    service_description: str = ""
-    service_value: Decimal = Decimal("0")
-    own_material_value: Decimal = Decimal("0")
-    third_party_material_value: Decimal = Decimal("0")
+    # Cadastro manual exige todos os dados do contrato (a importação usa outro fluxo).
+    service_description: str = Field(min_length=1)
+    service_value: Decimal = Field(ge=0)
+    own_material_value: Decimal = Field(ge=0)
+    third_party_material_value: Decimal = Field(ge=0)
     total_value: Decimal | None = None
-    start_date: date | None = None
-    end_date: date | None = None
-    unit: str = ""
+    start_date: date
+    end_date: date
+    unit: str = Field(min_length=1)
     finalized: bool = False
     dilation: bool = False
     dilation_end_date: date | None = None
@@ -293,14 +295,20 @@ class ContractCreateIn(CamelModel):
     # Equipe de notificação do mesmo setor; obrigatória (com membros ativos) quando notify=true.
     notification_team_id: str | None = None
     auto_renewal: bool = False
-    criticality: ContractCriticality | None = None
+    criticality: ContractCriticality
 
-    @field_validator("contract_number", "supplier")
+    @field_validator("contract_number", "supplier", "service_description", "unit")
     @classmethod
     def _not_blank(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("Campo obrigatório")
         return value
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> ContractCreateIn:
+        if self.end_date < self.start_date:
+            raise ValueError("O fim da vigência não pode ser anterior ao início")
+        return self
 
 
 # Campos que não aceitam `null` explícito no PATCH (colunas NOT NULL).

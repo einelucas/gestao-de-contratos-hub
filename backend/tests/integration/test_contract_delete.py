@@ -52,6 +52,12 @@ async def _seed(db_session) -> dict[str, str]:
                 contractEndDate=deleted.endDate,
             ),
             OverdueContractTracking(contractId=deleted.id, firstSeenOverdueAt=today),
+            # Ciclo já resolvido: precisa sobreviver à exclusão do contrato.
+            OverdueContractTracking(
+                contractId=deleted.id,
+                firstSeenOverdueAt=today - timedelta(days=30),
+                resolvedAt=today - timedelta(days=10),
+            ),
         ]
     )
     await db_session.commit()
@@ -88,6 +94,7 @@ async def test_delete_removes_contract_from_lists_indicators_and_dependencies(
         "/api/v1/contratos/vencidos-historico", headers=auth_header("ADMIN")
     )
     assert history_before.json()["items"][-1]["remaining"] == 1
+    assert history_before.json()["items"][-1]["resolved"] == 1
 
     response = await client.delete(url, headers=auth_header("ADMIN"))
 
@@ -106,6 +113,8 @@ async def test_delete_removes_contract_from_lists_indicators_and_dependencies(
         "/api/v1/contratos/vencidos-historico", headers=auth_header("ADMIN")
     )
     assert history_after.json()["items"][-1]["remaining"] == 0
+    # Excluir o contrato não pode apagar regularizações já contabilizadas.
+    assert history_after.json()["items"][-1]["resolved"] == 1
 
     sectors = await client.get("/api/v1/setores", headers=auth_header("ADMIN"))
     assert sectors.json()["items"][0]["contractCount"] == 1
@@ -124,6 +133,16 @@ async def test_delete_removes_contract_from_lists_indicators_and_dependencies(
     ).scalars().all()
     assert notifications == []
     assert tracking == []
+    preserved = (
+        await db_session.execute(
+            select(OverdueContractTracking).where(
+                OverdueContractTracking.contractId.is_(None),
+                OverdueContractTracking.resolvedAt.is_not(None),
+            )
+        )
+    ).scalars().all()
+    assert len(preserved) == 1
+    assert preserved[0].firstSeenOverdueAt == contracts_today() - timedelta(days=30)
 
     audit = (
         await db_session.execute(select(AuditLog).where(AuditLog.action == "contract.delete"))

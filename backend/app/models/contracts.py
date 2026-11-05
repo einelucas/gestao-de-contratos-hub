@@ -364,13 +364,18 @@ class OverdueContractTracking(Base):
     corrigida etc.). Se o mesmo contrato vencer de novo depois, abre uma nova
     linha — o histórico de regularizações já contadas nunca é apagado nem
     recuado, só a lista de quem está vencido agora muda.
+
+    Ao excluir um contrato, os ciclos em aberto são removidos pelo serviço
+    (deixaram de existir), mas os ciclos já resolvidos permanecem com
+    `contractId = NULL` para não reduzir o acumulado do gráfico. Por isso o FK
+    usa `SET NULL` e a coluna é opcional.
     """
 
     __tablename__ = "OverdueContractTracking"
 
     id: Mapped[str] = uuid_pk()
-    contractId: Mapped[str] = mapped_column(
-        String, ForeignKey("Contract.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    contractId: Mapped[str | None] = mapped_column(
+        String, ForeignKey("Contract.id", ondelete="SET NULL", onupdate="CASCADE"), nullable=True
     )
     firstSeenOverdueAt: Mapped[date] = mapped_column(Date, nullable=False)
     resolvedAt: Mapped[date | None] = mapped_column(Date, nullable=True)

@@ -3,6 +3,19 @@ import type { Contract, ContractAlert } from "~/types/api";
 export type StatusFilter = "Todos" | "Regularizacao" | "Vencido" | "Atencao" | "Regular" | "Finalizado";
 export type SortMode = "Status e vencimento" | "Vencimento mais próximo";
 
+/**
+ * Unidades padronizadas do cadastro de contratos. O formulário usa esta lista
+ * como seletor para impedir variações de grafia (ex.: "RIO VERDE" × "Rio Verde").
+ */
+export const CONTRACT_UNITS = [
+  "Balsas",
+  "Dourados",
+  "LEM",
+  "Nova Mutum",
+  "Rio Verde",
+  "Rondonópolis",
+] as const;
+
 export function money(value: string | number): string {
   return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }

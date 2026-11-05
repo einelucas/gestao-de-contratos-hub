@@ -7,6 +7,16 @@ from zoneinfo import ZoneInfo
 
 ATTENTION_DAYS = 20
 
+# Etapas da Auditoria que contam como "Em regularização" nos indicadores do
+# Dashboard: de "Aguardando Análise" até "Em Tratativa". As etapas seguintes
+# (Em Finalização/Finalizado) mantêm o alerta próprio.
+REGULARIZATION_AUDIT_STAGES = (
+    "AGUARDANDO_ANALISE",
+    "ANALISE_INTERNA_INPASA",
+    "FORNECEDOR_CONTATADO",
+    "EM_TRATATIVA",
+)
+
 # "Hoje" das regras de contrato é o dia civil em Brasília, não o do servidor
 # (containers costumam rodar em UTC e virariam o dia às 21h).
 CONTRACTS_TIMEZONE = ZoneInfo("America/Sao_Paulo")

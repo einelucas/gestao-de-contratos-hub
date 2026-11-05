@@ -23,7 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.modules.contracts import service
-from app.modules.contracts.rules import contracts_today
+from app.modules.contracts.rules import (
+    REGULARIZATION_AUDIT_STAGES,
+    contracts_today,
+    derive_alert,
+)
 from app.modules.contracts.schemas import (
     ContractOut,
     ContractSummaryOut,
@@ -76,20 +80,43 @@ def _add_months(value: date, months: int) -> date:
     return date(index // 12, index % 12 + 1, 1)
 
 
+def _is_regularization(item: ContractOut) -> bool:
+    """Conta o contrato como "Em regularização" no Dashboard.
+
+    É aditivo/sobreposto: um contrato em etapa de Auditoria (de "Aguardando
+    Análise" até "Em Tratativa") entra em "Em regularização" sem deixar de ser
+    "Vencido"/"Atenção" no restante do app nem nas demais contagens do resumo —
+    quem acompanha vencimentos continua vendo o mesmo número de vencidos.
+    """
+    return item.alert == "Regularizacao" or (
+        not item.effective_finalized and item.audit_stage in REGULARIZATION_AUDIT_STAGES
+    )
+
+
+def _status(item: ContractOut) -> str:
+    """Status exclusivo do contrato na dimensão de status do Dashboard.
+
+    Ignora a sobreposição de regularização: um contrato vencido que também está
+    em regularização continua com status "Vencido" aqui. Assim os status somam
+    o total de contratos e "Em regularização" é apresentado à parte.
+    """
+    return derive_alert(situation=item.situation, end_date=item.effective_end_date)
+
+
 def _group(items: list[ContractOut], key: Callable[[ContractOut], str]) -> list[SummaryGroupOut]:
     buckets: dict[str, list[ContractOut]] = defaultdict(list)
     for item in items:
         buckets[key(item)].append(item)
     groups = []
     for label, members in buckets.items():
-        counts = {status: sum(1 for m in members if m.alert == status) for status in STATUS_ORDER}
+        counts = {status: sum(1 for m in members if _status(m) == status) for status in STATUS_ORDER}
         groups.append(
             SummaryGroupOut(
                 key=label,
                 label=label or "Sem unidade",
                 total=len(members),
                 regular=counts["Regular"],
-                regularization=counts["Regularizacao"],
+                regularization=sum(1 for m in members if _is_regularization(m)),
                 atencao=counts["Atencao"],
                 vencido=counts["Vencido"],
                 finalizado=counts["Finalizado"],
@@ -123,7 +150,9 @@ async def build_summary(
         ]
 
     total = len(items)
-    counts = {status: sum(1 for item in items if item.alert == status) for status in STATUS_ORDER}
+    counts = {status: sum(1 for item in items if _status(item) == status) for status in STATUS_ORDER}
+    regularization_items = [item for item in items if _is_regularization(item)]
+    regularization_count = len(regularization_items)
     on_time = sum(
         1
         for item in items
@@ -143,9 +172,28 @@ async def build_summary(
             label=STATUS_LABEL[status],
             count=counts[status],
             percent=_percent(counts[status], total),
-            total_value=_money([item for item in items if item.alert == status]),
+            total_value=_money([item for item in items if _status(item) == status]),
         )
         for status in STATUS_ORDER
+    ]
+
+    # "Em regularização" é uma dimensão transversal: mostramos o total e a
+    # composição pelos status exclusivos, sem somá-la ao total de contratos.
+    regularization_by_status = [
+        StatusCountOut(
+            key=status,
+            label=STATUS_LABEL[status],
+            count=sum(1 for item in regularization_items if _status(item) == status),
+            percent=_percent(
+                sum(1 for item in regularization_items if _status(item) == status),
+                regularization_count,
+            ),
+            total_value=_money(
+                [item for item in regularization_items if _status(item) == status]
+            ),
+        )
+        for status in STATUS_ORDER
+        if any(_status(item) == status for item in regularization_items)
     ]
 
     # Série mensal pelo fim de vigência.
@@ -160,13 +208,19 @@ async def build_summary(
             if item.effective_end_date is not None and _month_start(item.effective_end_date) == cursor
         ]
         active = [item for item in in_month if not item.effective_finalized]
+        # A série mensal também é exclusiva: "Em regularização" é uma dimensão
+        # transversal e não entra empilhada aqui (evita contar o mesmo contrato
+        # como vencido e em regularização ao mesmo tempo).
+        overdue_count = sum(1 for item in active if _status(item) == "Vencido")
+        upcoming_count = sum(1 for item in active if _status(item) in ("Regular", "Atencao"))
         months.append(
             SummaryMonthOut(
                 month=cursor.strftime("%Y-%m"),
                 label=f"{_MONTH_ABBR[cursor.month - 1]}/{cursor.strftime('%y')}",
                 expiring=len(active),
-                overdue=sum(1 for item in active if item.alert == "Vencido"),
-                regularization=sum(1 for item in active if item.alert == "Regularizacao"),
+                upcoming=upcoming_count,
+                overdue=overdue_count,
+                regularization=0,
                 finalized=len(in_month) - len(active),
                 total_value=_money(active),
             )
@@ -181,7 +235,7 @@ async def build_summary(
             count=sum(
                 1
                 for item in open_items
-                if item.alert != "Regularizacao" and item.days_to_end is not None and test(item.days_to_end)
+                if item.days_to_end is not None and test(item.days_to_end)
             ),
         )
         for key, label, test in _DEADLINE_BUCKETS
@@ -190,14 +244,11 @@ async def build_summary(
         DeadlineBucketOut(
             key="withoutDate",
             label="Sem data",
-            count=sum(1 for item in open_items if item.alert != "Regularizacao" and item.days_to_end is None),
+            count=sum(1 for item in open_items if item.days_to_end is None),
         )
     )
 
-    deadlines.append(
-        DeadlineBucketOut(key="regularization", label="Em regularização", count=counts["Regularizacao"])
-    )
-    overdue_days = [-(item.days_to_end or 0) for item in items if item.alert == "Vencido"]
+    overdue_days = [-(item.days_to_end or 0) for item in items if _status(item) == "Vencido"]
     total_value = _money(items)
 
     return ContractSummaryOut(
@@ -210,11 +261,11 @@ async def build_summary(
             regularization_with_date=sum(
                 1
                 for item in items
-                if item.alert == "Regularizacao" and item.effective_end_date is not None
+                if _is_regularization(item) and item.effective_end_date is not None
             ),
             total=total,
             regular=counts["Regular"],
-            regularization=counts["Regularizacao"],
+            regularization=regularization_count,
             atencao=counts["Atencao"],
             vencido=counts["Vencido"],
             finalizado=counts["Finalizado"],
@@ -225,6 +276,7 @@ async def build_summary(
             on_time_percent=_percent(on_time, on_time_base),
         ),
         by_status=by_status,
+        regularization_by_status=regularization_by_status,
         by_sector=_group(items, lambda item: item.sector_name),
         by_unit=_group(items, lambda item: item.unit),
         monthly=months,
@@ -238,7 +290,7 @@ async def build_summary(
             has_values=total_value > 0,
             total=total_value,
             active=_money(open_items),
-            overdue=_money([item for item in items if item.alert == "Vencido"]),
-            attention=_money([item for item in items if item.alert == "Atencao"]),
+            overdue=_money([item for item in items if _status(item) == "Vencido"]),
+            attention=_money([item for item in items if _status(item) == "Atencao"]),
         ),
     )

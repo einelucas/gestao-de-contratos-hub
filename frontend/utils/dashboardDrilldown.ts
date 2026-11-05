@@ -1,4 +1,4 @@
-import type { Contract, ContractAlert, DeadlineBucket } from "~/types/api";
+import type { AuditStage, Contract, ContractAlert, DeadlineBucket } from "~/types/api";
 
 function effectiveEndDate(item: Contract): string | null {
   return item.effectiveEndDate ?? item.endDate;
@@ -6,6 +6,42 @@ function effectiveEndDate(item: Contract): string | null {
 
 function isEffectivelyFinalized(item: Contract): boolean {
   return item.effectiveFinalized || item.finalized;
+}
+
+/** Mesmas etapas de `REGULARIZATION_AUDIT_STAGES` em `backend/app/modules/contracts/rules.py`. */
+const REGULARIZATION_AUDIT_STAGES: AuditStage[] = [
+  "AGUARDANDO_ANALISE",
+  "ANALISE_INTERNA_INPASA",
+  "FORNECEDOR_CONTATADO",
+  "EM_TRATATIVA",
+];
+
+/**
+ * "Em regularização" no Dashboard é aditivo: inclui a regularização explícita
+ * (`alert`) e também contratos em etapa de Auditoria, sem reclassificá-los —
+ * eles continuam sendo "Vencido"/"Atenção" nos demais lugares do app.
+ */
+function isRegularization(item: Contract): boolean {
+  if (item.alert === "Regularizacao") return true;
+  if (isEffectivelyFinalized(item)) return false;
+  return item.auditStage !== null && REGULARIZATION_AUDIT_STAGES.includes(item.auditStage);
+}
+
+/**
+ * Status exclusivo do contrato, ignorando a sobreposição de regularização —
+ * mesma semântica de `_status` no `summary.py` do backend. Assim os status dos
+ * gráficos somam o total e "Em regularização" é um recorte à parte.
+ */
+function alertWithoutRegularization(item: Contract): ContractAlert {
+  if (isEffectivelyFinalized(item) || item.situation === "Finalizado") return "Finalizado";
+  if (item.situation === "Sem data") return "SemData";
+  if (item.situation === "Vencido") return "Vencido";
+  if (item.daysToEnd !== null && item.daysToEnd <= 20) return "Atencao";
+  return "Regular";
+}
+
+function matchesAlert(item: Contract, alert: ContractAlert): boolean {
+  return alert === "Regularizacao" ? isRegularization(item) : alertWithoutRegularization(item) === alert;
 }
 
 /**
@@ -36,16 +72,15 @@ export function applyDashboardBaseFilters(contracts: Contract[], filters: Dashbo
 }
 
 export function filterByAlert(contracts: Contract[], alert: ContractAlert): Contract[] {
-  return contracts.filter((item) => item.alert === alert);
+  return contracts.filter((item) => matchesAlert(item, alert));
 }
 
 export function filterByUnit(contracts: Contract[], unit: string, alert?: ContractAlert): Contract[] {
-  return contracts.filter((item) => item.unit === unit && (!alert || item.alert === alert));
+  return contracts.filter((item) => item.unit === unit && (!alert || matchesAlert(item, alert)));
 }
 
 /** Mesmos limites de `_DEADLINE_BUCKETS` em `backend/app/modules/contracts/summary.py`. */
 const DEADLINE_TESTS: Record<DeadlineBucket["key"], (item: Contract) => boolean> = {
-  regularization: (item) => item.alert === "Regularizacao",
   overdue: (item) => !isEffectivelyFinalized(item) && item.daysToEnd !== null && item.daysToEnd < 0,
   today: (item) => !isEffectivelyFinalized(item) && item.daysToEnd === 0,
   next7: (item) => !isEffectivelyFinalized(item) && item.daysToEnd !== null && item.daysToEnd >= 1 && item.daysToEnd <= 7,
@@ -57,7 +92,12 @@ const DEADLINE_TESTS: Record<DeadlineBucket["key"], (item: Contract) => boolean>
 };
 
 export function filterByDeadlineBucket(contracts: Contract[], key: DeadlineBucket["key"]): Contract[] {
-  return contracts.filter(item => key === "regularization" ? item.alert === "Regularizacao" : item.alert !== "Regularizacao" && DEADLINE_TESTS[key](item));
+  return contracts.filter((item) => DEADLINE_TESTS[key](item));
+}
+
+/** Recorte de "Em regularização" por status exclusivo (para a composição do card). */
+export function filterByRegularizationStatus(contracts: Contract[], alert: ContractAlert): Contract[] {
+  return contracts.filter((item) => isRegularization(item) && alertWithoutRegularization(item) === alert);
 }
 
 export type MonthSegment = "regularization" | "upcoming" | "overdue" | "finalized";
@@ -71,7 +111,7 @@ export function filterByMonth(contracts: Contract[], month: string, segment?: Mo
   if (!segment) return inMonth;
   if (segment === "finalized") return inMonth.filter((item) => isEffectivelyFinalized(item));
   const active = inMonth.filter((item) => !isEffectivelyFinalized(item));
-  if (segment === "regularization") return active.filter((item) => item.alert === "Regularizacao");
-  if (segment === "overdue") return active.filter((item) => item.alert === "Vencido");
-  return active.filter((item) => item.alert !== "Vencido" && item.alert !== "Regularizacao");
+  if (segment === "regularization") return active.filter((item) => isRegularization(item));
+  if (segment === "overdue") return active.filter((item) => alertWithoutRegularization(item) === "Vencido");
+  return active.filter((item) => alertWithoutRegularization(item) === "Regular" || alertWithoutRegularization(item) === "Atencao");
 }

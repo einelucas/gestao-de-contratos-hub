@@ -158,7 +158,18 @@ async def test_contract_team_must_match_sector_and_have_recipients(client, auth_
         await _create(client, auth_header, sectors["obras"], name="Equipe vazia", members=[])
     ).json()
     end = (contracts_today() + timedelta(days=90)).isoformat()
-    base = {"sectorId": sectors["obras"], "supplier": "Fornecedor X", "endDate": end}
+    base = {
+        "sectorId": sectors["obras"],
+        "supplier": "Fornecedor X",
+        "serviceDescription": "Serviço",
+        "serviceValue": 100,
+        "ownMaterialValue": 0,
+        "thirdPartyMaterialValue": 0,
+        "startDate": "2025-01-01",
+        "endDate": end,
+        "unit": "LEM",
+        "criticality": "MEDIA",
+    }
 
     other_sector = await client.post(
         "/api/v1/contratos",
@@ -226,6 +237,14 @@ async def test_sector_change_invalidates_team(client, auth_header, db_session) -
             "sectorId": sectors["obras"],
             "supplier": "Fornecedor X",
             "contractNumber": "10",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
             "notify": True,
             "notificationTeamId": obras_team["id"],
         },
@@ -263,6 +282,14 @@ async def test_disabling_alerts_clears_enabled_date(client, auth_header, db_sess
             "sectorId": sectors["obras"],
             "supplier": "F",
             "contractNumber": "1",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
             "notificationTeamId": team["id"],
         },
         headers=auth_header("ADMIN"),

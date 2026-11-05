@@ -54,9 +54,17 @@ async def test_regularization_persists_without_renewing_real_deadline(
     assert again.json() == started
     report = (await client.get(f"{URL}/resumo", headers=auth_header("ADMIN"))).json()
     assert report["kpis"]["regularization"] == 1
-    assert report["kpis"]["vencido"] == 0
+    # Regularização é aditiva: o contrato continua vencido nos indicadores.
+    assert report["kpis"]["vencido"] == 1
     assert report["kpis"]["onTime"] == 0
     assert report["kpis"]["onTimeBase"] == 1
+    by_status = {item["key"]: item["count"] for item in report["byStatus"]}
+    assert by_status["Vencido"] == 1
+    assert by_status["Regularizacao"] == 0
+    regularization_by_status = {
+        item["key"]: item["count"] for item in report["regularizationByStatus"]
+    }
+    assert regularization_by_status == {"Vencido": 1}
     assert sum(bucket["count"] for bucket in report["deadlines"]) == 1
 
 
@@ -116,8 +124,14 @@ async def test_finalization_clears_regularization_without_reappearing_on_reopen(
     assert closed["regularizationStage"] is None
     assert closed["regularizationHistory"][-1]["stage"] is None
     reopened = await _patch(client, auth_header, contract_id, {"finalized": False})
+    # Reabrir não reclassifica o contrato: ele continua "Vencido" no app.
     assert reopened["alert"] == "Vencido"
+    assert reopened["auditStage"] == "AGUARDANDO_ANALISE"
     assert reopened["regularizationStage"] is None
+    # O Dashboard, porém, o contabiliza adicionalmente como "Em regularização".
+    report = (await client.get(f"{URL}/resumo", headers=auth_header("ADMIN"))).json()
+    assert report["kpis"]["vencido"] == 1
+    assert report["kpis"]["regularization"] == 1
 
 
 async def test_invalid_stage_and_finalized_entry_are_rejected(client, auth_header, db_session) -> None:

@@ -12,7 +12,14 @@ from sqlalchemy.orm import selectinload
 from app.core.auth import CurrentUser
 from app.core.errors import ConflictError, DomainError, NotFoundError
 from app.models.common import utcnow
-from app.models.contracts import Contract, NotificationTeam, Sector, Supplier, UserSectorPermission
+from app.models.contracts import (
+    Contract,
+    NotificationTeam,
+    OverdueContractTracking,
+    Sector,
+    Supplier,
+    UserSectorPermission,
+)
 from app.models.user import User
 from app.modules.contracts.access import (
     SectorAccess,
@@ -539,6 +546,15 @@ async def delete_contract(
         entity="Contract",
         entity_id=item.id,
         previous_data=previous_data,
+    )
+    # Ciclos em aberto deixam de existir com o contrato; ciclos já resolvidos
+    # são histórico e permanecem (o FK vira NULL) para o acumulado do gráfico
+    # nunca diminuir por causa de uma exclusão.
+    await session.execute(
+        delete(OverdueContractTracking).where(
+            OverdueContractTracking.contractId == contract_id,
+            OverdueContractTracking.resolvedAt.is_(None),
+        )
     )
     await session.delete(item)
     await session.commit()

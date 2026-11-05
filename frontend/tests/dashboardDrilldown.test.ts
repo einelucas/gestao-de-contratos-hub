@@ -5,6 +5,7 @@ import {
   filterByAlert,
   filterByDeadlineBucket,
   filterByMonth,
+  filterByRegularizationStatus,
   filterByUnit,
 } from "~/utils/dashboardDrilldown";
 
@@ -79,9 +80,9 @@ describe("filterByDeadlineBucket", () => {
 
 describe("filterByAlert e filterByUnit", () => {
   const contracts = [
-    makeContract({ id: "a", alert: "Vencido", unit: "LEM" }),
-    makeContract({ id: "b", alert: "Regular", unit: "LEM" }),
-    makeContract({ id: "c", alert: "Vencido", unit: "CAMPUS" }),
+    makeContract({ id: "a", alert: "Vencido", situation: "Vencido", endDate: "2025-01-01", daysToEnd: -10, unit: "LEM" }),
+    makeContract({ id: "b", alert: "Regular", situation: "Vigente", endDate: "2030-01-01", daysToEnd: 1000, unit: "LEM" }),
+    makeContract({ id: "c", alert: "Vencido", situation: "Vencido", endDate: "2025-01-01", daysToEnd: -5, unit: "CAMPUS" }),
   ];
 
   it("filtra por status (alert)", () => {
@@ -99,10 +100,10 @@ describe("filterByAlert e filterByUnit", () => {
 
 describe("filterByMonth", () => {
   const contracts = [
-    makeContract({ id: "upcoming", endDate: "2026-10-15", finalized: false, alert: "Atencao" }),
-    makeContract({ id: "overdue", endDate: "2026-10-05", finalized: false, alert: "Vencido" }),
-    makeContract({ id: "finalized", endDate: "2026-10-20", finalized: true, alert: "Finalizado" }),
-    makeContract({ id: "otherMonth", endDate: "2026-11-01", finalized: false, alert: "Regular" }),
+    makeContract({ id: "upcoming", endDate: "2026-10-15", finalized: false, alert: "Atencao", situation: "Vigente", daysToEnd: 10 }),
+    makeContract({ id: "overdue", endDate: "2026-10-05", finalized: false, alert: "Vencido", situation: "Vencido", daysToEnd: -5 }),
+    makeContract({ id: "finalized", endDate: "2026-10-20", finalized: true, alert: "Finalizado", situation: "Finalizado" }),
+    makeContract({ id: "otherMonth", endDate: "2026-11-01", finalized: false, alert: "Regular", situation: "Vigente", daysToEnd: 40 }),
   ];
 
   it("retorna todos os contratos do mês quando nenhum segmento é informado", () => {
@@ -124,10 +125,10 @@ describe("filterByMonth", () => {
 
 describe("applyDashboardBaseFilters + drilldown combinados", () => {
   const contracts = [
-    makeContract({ id: "inRange", endDate: "2026-10-10", unit: "LEM", alert: "Vencido" }),
-    makeContract({ id: "outOfRange", endDate: "2026-12-10", unit: "LEM", alert: "Vencido" }),
-    makeContract({ id: "noDate", endDate: null, unit: "LEM", alert: "SemData" }),
-    makeContract({ id: "otherUnit", endDate: "2026-10-10", unit: "CAMPUS", alert: "Vencido" }),
+    makeContract({ id: "inRange", endDate: "2026-10-10", unit: "LEM", alert: "Vencido", situation: "Vencido", daysToEnd: -10 }),
+    makeContract({ id: "outOfRange", endDate: "2026-12-10", unit: "LEM", alert: "Vencido", situation: "Vencido", daysToEnd: -40 }),
+    makeContract({ id: "noDate", endDate: null, unit: "LEM", alert: "SemData", situation: "Sem data" }),
+    makeContract({ id: "otherUnit", endDate: "2026-10-10", unit: "CAMPUS", alert: "Vencido", situation: "Vencido", daysToEnd: -10 }),
   ];
 
   it("combina filtro-base do Dashboard (unidade + período) com o drilldown de status", () => {
@@ -138,11 +139,28 @@ describe("applyDashboardBaseFilters + drilldown combinados", () => {
 
 describe('regularização no dashboard', () => {
   const treated = makeContract({ id: 'treated', alert: 'Regularizacao', situation: 'Vencido', endDate: '2026-01-01', daysToEnd: -20 });
-  const pending = makeContract({ id: 'pending', alert: 'Vencido', endDate: '2026-01-01', daysToEnd: -20 });
-  it('separa tratativas dos vencidos pendentes sem contá-las como vigentes', () => {
-    expect(filterByDeadlineBucket([treated, pending], 'overdue').map(c => c.id)).toEqual(['pending']);
-    expect(filterByDeadlineBucket([treated, pending], 'regularization').map(c => c.id)).toEqual(['treated']);
+  const pending = makeContract({ id: 'pending', alert: 'Vencido', situation: 'Vencido', endDate: '2026-01-01', daysToEnd: -20 });
+  it('regularização é um recorte: não substitui o status vencido', () => {
+    expect(filterByDeadlineBucket([treated, pending], 'overdue').map(c => c.id).sort()).toEqual(['pending', 'treated']);
+    expect(filterByAlert([treated, pending], 'Regularizacao').map(c => c.id)).toEqual(['treated']);
+    expect(filterByRegularizationStatus([treated, pending], 'Vencido').map(c => c.id)).toEqual(['treated']);
     expect(filterByMonth([treated, pending], '2026-01', 'regularization').map(c => c.id)).toEqual(['treated']);
+    expect(filterByMonth([treated, pending], '2026-01', 'overdue').map(c => c.id).sort()).toEqual(['pending', 'treated']);
     expect(filterByMonth([treated, pending], '2026-01', 'upcoming')).toEqual([]);
+  });
+
+  const auditOverdue = makeContract({ id: 'auditOverdue', alert: 'Vencido', situation: 'Vencido', auditStage: 'EM_TRATATIVA', endDate: '2026-01-01', daysToEnd: -20 });
+  it('etapa de auditoria conta como regularização sem sair dos vencidos', () => {
+    expect(filterByAlert([auditOverdue], 'Regularizacao').map(c => c.id)).toEqual(['auditOverdue']);
+    expect(filterByAlert([auditOverdue], 'Vencido').map(c => c.id)).toEqual(['auditOverdue']);
+    expect(filterByDeadlineBucket([auditOverdue], 'overdue').map(c => c.id)).toEqual(['auditOverdue']);
+    expect(filterByRegularizationStatus([auditOverdue], 'Vencido').map(c => c.id)).toEqual(['auditOverdue']);
+    expect(filterByMonth([auditOverdue], '2026-01', 'regularization').map(c => c.id)).toEqual(['auditOverdue']);
+    expect(filterByMonth([auditOverdue], '2026-01', 'overdue').map(c => c.id)).toEqual(['auditOverdue']);
+  });
+
+  it('etapa posterior a Em Tratativa não conta como regularização', () => {
+    const finishing = makeContract({ id: 'finishing', alert: 'Vencido', situation: 'Vencido', auditStage: 'EM_FINALIZACAO', daysToEnd: -20 });
+    expect(filterByAlert([finishing], 'Regularizacao')).toEqual([]);
   });
 });

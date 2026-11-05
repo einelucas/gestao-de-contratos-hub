@@ -40,8 +40,6 @@ const STAGES: Array<{ key: UiAuditStage; label: string; color: string }> = [
 
   { key: "AGUARDANDO_ANALISE", label: "Aguardando Análise", color: "#D45B73" },
 
-  { key: "CHAMADO_ELES", label: "Chamado aberto no Elos", color: "#3B82F6" },
-
   { key: "ANALISE_INTERNA_INPASA", label: "Análise Interna – INPASA", color: "#A855F7" },
 
   { key: "FORNECEDOR_CONTATADO", label: "Aguardando fornecedor", color: "#C58A1F" },

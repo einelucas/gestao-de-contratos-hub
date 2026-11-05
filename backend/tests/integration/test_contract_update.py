@@ -296,7 +296,19 @@ async def test_create_contract_returns_201_or_200_with_body(client, auth_header,
     ids = await _seed(db_session)
     response = await client.post(
         URL,
-        json={"sectorId": ids["obras"], "supplier": "Fornecedor Y", "contractNumber": "300"},
+        json={
+            "sectorId": ids["obras"],
+            "supplier": "Fornecedor Y",
+            "contractNumber": "300",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
+        },
         headers=auth_header("ADMIN"),
     )
     assert response.status_code in (200, 201), response.text
@@ -311,7 +323,19 @@ async def test_sector_change_conflicts_with_same_number(client, auth_header, db_
     ids = await _seed(db_session)
     created = await client.post(
         URL,
-        json={"sectorId": ids["ti"], "supplier": "Y", "contractNumber": "100"},
+        json={
+            "sectorId": ids["ti"],
+            "supplier": "Y",
+            "contractNumber": "100",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
+        },
         headers=auth_header("ADMIN"),
     )
     assert created.status_code in (200, 201)

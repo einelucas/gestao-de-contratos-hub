@@ -26,7 +26,6 @@ export type ContractCriticality = "BAIXA" | "MEDIA" | "ALTA";
 export type ContractSituation = "Vigente" | "Vencido" | "Sem data" | "Finalizado";
 export type AuditStage =
   | "AGUARDANDO_ANALISE"
-  | "CHAMADO_ELES"
   | "ANALISE_INTERNA_INPASA"
   | "FORNECEDOR_CONTATADO"
   | "EM_TRATATIVA"
@@ -186,6 +185,14 @@ export interface ContractCreatePayload extends Omit<ContractUpdatePayload, "sect
   sectorId: string;
   supplier: string;
   contractNumber: string;
+  serviceDescription: string;
+  serviceValue: number;
+  ownMaterialValue: number;
+  thirdPartyMaterialValue: number;
+  startDate: string;
+  endDate: string;
+  unit: string;
+  criticality: ContractCriticality;
 }
 
 export interface NotificationTeamMember {
@@ -349,7 +356,7 @@ export interface SummaryGroup {
 }
 
 export interface DeadlineBucket {
-  key: "regularization" | "overdue" | "today" | "next7" | "next30" | "next60" | "next90" | "later" | "withoutDate";
+  key: "overdue" | "today" | "next7" | "next30" | "next60" | "next90" | "later" | "withoutDate";
   label: string;
   count: number;
 }
@@ -375,9 +382,10 @@ export interface ContractSummary {
     onTimePercent: number;
   };
   byStatus: Array<{ key: ContractAlert; label: string; count: number; percent: number; totalValue: number }>;
+  regularizationByStatus: Array<{ key: ContractAlert; label: string; count: number; percent: number; totalValue: number }>;
   bySector: SummaryGroup[];
   byUnit: SummaryGroup[];
-  monthly: Array<{ month: string; label: string; expiring: number; overdue: number; finalized: number; regularization?: number; totalValue: number }>;
+  monthly: Array<{ month: string; label: string; expiring: number; upcoming?: number; overdue: number; finalized: number; regularization?: number; totalValue: number }>;
   deadlines: DeadlineBucket[];
   overdue: { count: number; averageDays: number; maxDays: number };
   values: { hasValues: boolean; total: number; active: number; overdue: number; attention: number };

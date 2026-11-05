@@ -7,6 +7,7 @@ import {
   filterByAlert,
   filterByDeadlineBucket,
   filterByMonth,
+  filterByRegularizationStatus,
   filterByUnit,
   type MonthSegment,
 } from "~/utils/dashboardDrilldown";
@@ -30,7 +31,6 @@ const STATUS_COLOR = {
   Atencao: "#eaa239",
   Vencido: "#c0392b",
   Finalizado: "#bdbfc1",
-  SemData: "#007cc5",
 } as const;
 
 // Filtros trocados rápido disparam várias cargas: só a mais recente pode mexer na tela.
@@ -83,42 +83,53 @@ const kpiCards = computed(() => {
   ];
 });
 
-const statusDonut = computed(() =>
-  (summary.value?.byStatus ?? [])
-    .filter((item) => item.count > 0)
-    .map((item) => ({ key: item.key, label: item.label, value: item.percent, color: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR] })),
+const statusDonut = computed(() => {
+  // "Sem data" não é um status de vigência: contratos sem data ficam fora dos
+  // gráficos e o percentual é recalculado sobre quem tem data.
+  const items = (summary.value?.byStatus ?? []).filter((item) => item.count > 0 && item.key !== "SemData");
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  return items.map((item) => ({
+    key: item.key,
+    label: item.label,
+    value: total ? (item.count * 100) / total : 0,
+    color: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR],
+  }));
+});
+
+const regularizationTotal = computed(() => summary.value?.kpis.regularization ?? 0);
+const regularizationBreakdown = computed(() =>
+  (summary.value?.regularizationByStatus ?? []).filter((item) => item.count > 0),
 );
 
 const statusSeries = [
-  { key: "regularization", label: "Em regularização", color: STATUS_COLOR.Regularizacao },
   { key: "regular", label: "Regulares", color: STATUS_COLOR.Regular },
   { key: "atencao", label: "Atenção", color: STATUS_COLOR.Atencao },
   { key: "vencido", label: "Vencidos", color: STATUS_COLOR.Vencido },
-  { key: "semData", label: "Sem data", color: STATUS_COLOR.SemData },
   { key: "finalizado", label: "Finalizados", color: STATUS_COLOR.Finalizado },
 ];
 
 function groupPoints(groups: ContractSummary["byUnit"]) {
-  return groups.slice(0, 12).map((group) => ({
-    key: group.key,
-    label: group.label,
-    value: group.total,
-    values: {
-      regularization: group.regularization ?? 0,
-      regular: group.regular,
-      atencao: group.atencao,
-      vencido: group.vencido,
-      semData: group.semData,
-      finalizado: group.finalizado,
-    },
-  }));
+  return groups.slice(0, 12).map((group) => {
+    // Só os status de vigência entram nos gráficos; "sem data" não é série.
+    const visible = group.regular + group.atencao + group.vencido + group.finalizado;
+    return {
+      key: group.key,
+      label: group.label,
+      value: visible,
+      values: {
+        regular: group.regular,
+        atencao: group.atencao,
+        vencido: group.vencido,
+        finalizado: group.finalizado,
+      },
+    };
+  });
 }
 
 const unitPoints = computed(() => groupPoints(summary.value?.byUnit ?? []));
 const sectorPoints = computed(() => groupPoints(summary.value?.bySector ?? []));
 
 const monthlySeries = [
-  { key: "regularization", label: "Em regularização", color: STATUS_COLOR.Regularizacao },
   { key: "upcoming", label: "A vencer", color: "#304f7e" },
   { key: "overdue", label: "Vencidos (em aberto)", color: STATUS_COLOR.Vencido },
   { key: "finalized", label: "Finalizados", color: STATUS_COLOR.Finalizado },
@@ -128,7 +139,7 @@ const monthlyPoints = computed(() =>
     key: month.month,
     label: month.label,
     value: month.expiring + month.finalized,
-    values: { upcoming: month.expiring - month.overdue - (month.regularization ?? 0), regularization: month.regularization ?? 0, overdue: month.overdue, finalized: month.finalized },
+    values: { upcoming: month.upcoming ?? 0, overdue: month.overdue, finalized: month.finalized },
   })),
 );
 const valueByUnit = computed(() =>
@@ -237,7 +248,6 @@ const SERIES_ALERT: Record<string, ContractAlert> = {
   regular: "Regular",
   atencao: "Atencao",
   vencido: "Vencido",
-  semData: "SemData",
   finalizado: "Finalizado",
 };
 
@@ -245,6 +255,17 @@ function onStatusSelect(item: { key?: string; label: string }): void {
   const alert = item.key as ContractAlert | undefined;
   if (!alert) return;
   void openDrilldown(`Contratos ${statusLabel(alert).toLowerCase()}`, (base) => filterByAlert(base, alert));
+}
+
+function onRegularizationSelect(): void {
+  void openDrilldown("Contratos em regularização", (base) => filterByAlert(base, "Regularizacao"));
+}
+
+function onRegularizationStatusSelect(item: { key: ContractAlert; label: string }): void {
+  void openDrilldown(
+    `Contratos em regularização — ${statusLabel(item.key).toLowerCase()}`,
+    (base) => filterByRegularizationStatus(base, item.key),
+  );
 }
 
 function onDeadlineSelect(key: DeadlineBucket["key"]): void {
@@ -297,7 +318,7 @@ watch(filters, load, { deep: true, immediate: true });
         </div>
         <p v-if="summary" class="dashboard-caption">
           Situação em {{ new Date(`${summary.today}T00:00:00`).toLocaleDateString("pt-BR") }}
-          <template v-if="summary.periodStart || summary.periodEnd"> · vencimentos no período selecionado (contratos sem data ficam de fora)</template>
+          <template v-if="summary.periodStart || summary.periodEnd"> · vencimentos no período selecionado</template>
         </p>
       </section>
 
@@ -312,12 +333,38 @@ watch(filters, load, { deep: true, immediate: true });
         <OnTimeChart :kpis="summary.kpis" />
 
         <div class="dashboard-grid">
-          <DashboardCard title="Contratos por status" subtitle="Distribuição de todos os contratos do recorte." :icon="PieChart">
+          <DashboardCard title="Contratos por status" subtitle="Distribuição dos contratos com vigência no recorte." :icon="PieChart">
             <DonutChart v-if="statusDonut.length" :items="statusDonut" show-legend-values @select="onStatusSelect" />
             <p v-else class="history-empty">Nenhum contrato no recorte.</p>
+            <div v-if="regularizationTotal" class="regularization-block">
+              <div class="regularization-block-head">
+                <div>
+                  <strong>{{ formatNumber(regularizationTotal, 0) }}</strong>
+                  <span>em regularização</span>
+                </div>
+                <button type="button" class="regularization-block-link" @click="onRegularizationSelect">Ver todos</button>
+              </div>
+              <p class="regularization-block-note">Recorte sobre os status acima — não soma ao total.</p>
+              <ul class="regularization-block-list">
+                <li v-for="item in regularizationBreakdown" :key="item.key">
+                  <button type="button" @click="onRegularizationStatusSelect(item)">
+                    <span class="regularization-dot" :style="{ backgroundColor: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR] }" />
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.count }}</strong>
+                    <small>{{ formatPercent(item.percent) }}</small>
+                  </button>
+                </li>
+              </ul>
+            </div>
           </DashboardCard>
 
-          <DeadlineStatusCard :deadlines="summary.deadlines" @select="onDeadlineSelect" />
+          <DeadlineStatusCard
+            :deadlines="summary.deadlines"
+            :total="summary.kpis.active - summary.kpis.semData"
+            :regularization="regularizationTotal"
+            @select="onDeadlineSelect"
+            @regularization="onRegularizationSelect"
+          />
 
           <DashboardCard title="Contratos por unidade" subtitle="Status empilhado por unidade." :icon="BarChart3" class="span-2">
             <BarChart v-if="unitPoints.length" :points="unitPoints" :series="statusSeries" series-label="Total" @select="onUnitBarSelect" />
@@ -356,3 +403,80 @@ watch(filters, load, { deep: true, immediate: true });
     />
   </ModuleWorkspace>
 </template>
+
+<style scoped>
+.regularization-block {
+  margin-top: 14px;
+  border-top: 1px solid #e4e9f0;
+  padding-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.regularization-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.regularization-block-head strong {
+  margin-right: 6px;
+  color: #2f6cae;
+  font-size: 22px;
+}
+.regularization-block-head span {
+  color: #31445c;
+  font-size: 12px;
+  font-weight: 700;
+}
+.regularization-block-link {
+  border: 0;
+  background: transparent;
+  color: #2f6cae;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.regularization-block-note {
+  margin: 0;
+  color: #718096;
+  font-size: 10.5px;
+}
+.regularization-block-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.regularization-block-list button {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 5px 4px;
+  text-align: left;
+  color: #31445c;
+  font-size: 12px;
+}
+.regularization-block-list button:hover {
+  background: #f5f8fb;
+}
+.regularization-block-list strong {
+  color: #20324a;
+}
+.regularization-block-list small {
+  min-width: 38px;
+  color: #718096;
+  font-size: 10px;
+  text-align: right;
+}
+.regularization-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+</style>

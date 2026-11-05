@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from sqlalchemy import ColumnElement, func, or_, select, text
+from sqlalchemy import ColumnElement, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,6 +82,14 @@ async def reconcile_and_get_history(session: AsyncSession) -> OverdueHistoryOut:
     # ao entrar, já enxerga o que a primeira gravou (reconciliação idempotente).
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _RECONCILE_LOCK_KEY})
     today = contracts_today()
+    # Segurança: se algum contrato foi excluído fora do fluxo normal, o ciclo
+    # em aberto dele não pode virar "regularização" no dia seguinte.
+    await session.execute(
+        delete(OverdueContractTracking).where(
+            OverdueContractTracking.contractId.is_(None),
+            OverdueContractTracking.resolvedAt.is_(None),
+        )
+    )
     overdue_ids = await _current_overdue_contract_ids(session)
 
     active_rows = (
@@ -165,11 +173,15 @@ async def list_history_contracts(
         # A curva verde é acumulada; o popup mostra as resoluções ocorridas no dia clicado.
         condition = OverdueContractTracking.resolvedAt == snapshot_date
 
-    contract_ids = set(
-        (
+    contract_ids = {
+        contract_id
+        for contract_id in (
             await session.execute(
                 select(OverdueContractTracking.contractId).where(condition).distinct()
             )
         ).scalars()
-    )
+        # Ciclos resolvidos de contratos já excluídos continuam no acumulado,
+        # mas não têm contrato para listar no popup.
+        if contract_id is not None
+    }
     return await service.list_contracts(session, actor, contract_ids=contract_ids)

@@ -269,6 +269,42 @@ async def test_contract_overdue_again_opens_new_cycle(client, auth_header, db_se
     assert await _open_tracking_counts(db_session) == {contract_id: 1}
 
 
+async def test_deleting_contract_keeps_already_resolved_cycles(
+    client, auth_header, db_session
+) -> None:
+    """Excluir o contrato não pode apagar regularizações já contabilizadas."""
+    ids = await _seed(db_session, overdue=1)
+    contract_id = ids["overdue"][0]
+    assert (await client.get(HISTORY_URL, headers=auth_header("ADMIN"))).status_code == 200
+
+    contract = await db_session.get(Contract, contract_id)
+    contract.endDate = contracts_today() + timedelta(days=100)
+    await db_session.commit()
+    resolved = await client.get(HISTORY_URL, headers=auth_header("ADMIN"))
+    assert resolved.json()["items"][-1] == {
+        "date": contracts_today().isoformat(),
+        "remaining": 0,
+        "resolved": 1,
+    }
+
+    deleted = await client.delete(
+        f"/api/v1/contratos/{contract_id}", headers=auth_header("ADMIN")
+    )
+    assert deleted.status_code == 204
+
+    after = await client.get(HISTORY_URL, headers=auth_header("ADMIN"))
+    assert after.json()["items"][-1]["remaining"] == 0
+    assert after.json()["items"][-1]["resolved"] == 1
+    preserved = (
+        await db_session.execute(
+            select(OverdueContractTracking).where(
+                OverdueContractTracking.contractId.is_(None)
+            )
+        )
+    ).scalars().all()
+    assert len(preserved) == 1 and preserved[0].resolvedAt is not None
+
+
 async def test_database_rejects_second_open_cycle(db_session) -> None:
     """O índice parcial (migração 0007) é a última linha de defesa contra duplicidade."""
     ids = await _seed(db_session, overdue=1)

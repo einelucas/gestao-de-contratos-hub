@@ -422,6 +422,10 @@ async def confirm(
     await session.execute(select(Contract.id).where(Contract.sectorId == sector_id).with_for_update())
     await session.execute(delete(Contract).where(Contract.sectorId == sector_id))
     if not other_count:
+        # Substituição total da base: reinicia o acompanhamento. Sem este
+        # DELETE explícito, os ciclos resolvidos sobreviveriam (o FK usa
+        # SET NULL) e o acumulado do gráfico não voltaria a zero.
+        await session.execute(delete(OverdueContractTracking))
         await session.execute(delete(OverdueDailySnapshot))
     suppliers = (
         (await session.execute(select(Supplier).order_by(Supplier.createdAt, Supplier.id))).scalars().all()

@@ -8,13 +8,17 @@ const parts = computed(() => {
   const { regular, atencao, vencido, onTimeBase } = props.kpis;
   if (!onTimeBase) return [];
 
+  // Status exclusivos: cada contrato entra em uma única faixa. "Em
+  // regularização" é um recorte transversal e fica fora da barra para não
+  // duplicar contratos que continuam vencidos ou em atenção.
   return [
     { label: "Regulares", value: regular, color: "#609346" },
     { label: "Atenção", value: atencao, color: "#eaa239" },
-    { label: "Em regularização", value: props.kpis.regularizationWithDate ?? 0, color: "#397ac1" },
     { label: "Vencidos pendentes", value: vencido, color: "#c0392b" },
   ].map((part) => ({ ...part, width: (part.value / onTimeBase) * 100 }));
 });
+
+const regularizationCount = computed(() => props.kpis.regularizationWithDate ?? 0);
 </script>
 
 <template>
@@ -24,13 +28,14 @@ const parts = computed(() => {
         <strong :class="{ bad: kpis.onTimePercent < 80 }">{{ formatPercent(kpis.onTimePercent) }} em dia</strong>
         <span>{{ kpis.onTime }} de {{ kpis.onTimeBase }} contratos ativos com data</span>
       </div>
-      <small>Finalizados e sem data ficam fora do cálculo · {{ kpis.semData }} sem data</small>
+      <small>Contratos finalizados ficam fora do cálculo</small>
     </div>
     <div class="on-time-track">
       <span v-for="part in parts" :key="part.label" :style="{ width: `${part.width}%`, background: part.color }" :title="`${part.label}: ${part.value}`">{{ part.width >= 8 ? part.value : "" }}</span>
     </div>
     <div class="on-time-legend">
       <span v-for="part in parts" :key="part.label"><i :style="{ background: part.color }" />{{ part.label }}: {{ part.value }}</span>
+      <span v-if="regularizationCount" class="regularization-note"><i />Em regularização: {{ regularizationCount }} <small>(recorte)</small></span>
     </div>
   </section>
 </template>
@@ -97,5 +102,12 @@ const parts = computed(() => {
   width: 9px;
   height: 9px;
   border-radius: 999px;
+}
+.on-time-legend .regularization-note i {
+  background: #397ac1;
+}
+.on-time-legend .regularization-note small {
+  color: #8a97ab;
+  font-size: 10px;
 }
 </style>

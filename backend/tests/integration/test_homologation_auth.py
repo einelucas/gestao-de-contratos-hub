@@ -209,7 +209,23 @@ async def test_viewer_is_blocked_from_admin_actions(client, homologation, db_ses
     assert (await client.get("/api/v1/contratos")).status_code == 200
     assert (await client.get("/api/v1/contratos/resumo")).status_code == 200
     for method, url, body in (
-        ("POST", "/api/v1/contratos", {"sectorId": sector.id, "supplier": "X", "contractNumber": "1"}),
+        (
+            "POST",
+            "/api/v1/contratos",
+            {
+                "sectorId": sector.id,
+                "supplier": "X",
+                "contractNumber": "1",
+                "serviceDescription": "Serviço",
+                "serviceValue": 100,
+                "ownMaterialValue": 0,
+                "thirdPartyMaterialValue": 0,
+                "startDate": "2025-01-01",
+                "endDate": "2030-01-01",
+                "unit": "LEM",
+                "criticality": "MEDIA",
+            },
+        ),
         ("GET", "/api/v1/usuarios", None),
         ("GET", "/api/v1/equipes-notificacao", None),
         ("POST", "/api/v1/equipes-notificacao", {"name": "x", "sectorId": sector.id}),

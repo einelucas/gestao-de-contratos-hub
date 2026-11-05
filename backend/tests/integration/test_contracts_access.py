@@ -109,14 +109,38 @@ async def test_analyst_edits_only_sectors_with_can_edit(client, auth_header, db_
 
     create_denied = await client.post(
         "/api/v1/contratos",
-        json={"sectorId": ids["ti"], "supplier": "Y", "contractNumber": "300"},
+        json={
+            "sectorId": ids["ti"],
+            "supplier": "Y",
+            "contractNumber": "300",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
+        },
         headers=auth_header("ANALYST"),
     )
     assert create_denied.status_code == 403
 
     create_ok = await client.post(
         "/api/v1/contratos",
-        json={"sectorId": ids["obras"], "supplier": "Y", "contractNumber": "300"},
+        json={
+            "sectorId": ids["obras"],
+            "supplier": "Y",
+            "contractNumber": "300",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
+        },
         headers=auth_header("ANALYST"),
     )
     assert create_ok.status_code == 201
@@ -184,7 +208,19 @@ async def test_admin_sees_and_edits_all(client, auth_header, db_session) -> None
 
     created = await client.post(
         "/api/v1/contratos",
-        json={"sectorId": ids["ti"], "supplier": "Y", "contractNumber": "300"},
+        json={
+            "sectorId": ids["ti"],
+            "supplier": "Y",
+            "contractNumber": "300",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+            "criticality": "MEDIA",
+        },
         headers=auth_header("ADMIN"),
     )
     assert created.status_code == 201

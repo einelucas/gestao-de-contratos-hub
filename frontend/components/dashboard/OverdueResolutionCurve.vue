@@ -56,12 +56,8 @@ function formatDateLabel(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-function pointAriaLabel(point: OverdueHistoryPoint, series: OverdueHistorySeries): string {
-  const count = series === "remaining" ? point.remaining : point.resolved;
-  const label = series === "remaining"
-    ? `${count} contratos vencidos. Abrir contratos vencidos nesta data.`
-    : `${count} regularizações acumuladas. Abrir contratos regularizados nesta data.`;
-  return `${formatDateLabel(point.date)}: ${label}`;
+function dayAriaLabel(point: OverdueHistoryPoint): string {
+  return `${formatDateLabel(point.date)}: ${point.remaining} contratos vencidos, ${point.resolved} regularizações acumuladas. Abrir contratos desta data.`;
 }
 
 const width = 900;
@@ -77,10 +73,40 @@ const yMax = computed(() => {
 
 const x = (index: number) => pad.left + (index * plotWidth) / Math.max(1, points.value.length - 1);
 const y = (value: number) => height - pad.bottom - (value / yMax.value) * plotHeight;
-function dotX(index: number, series: OverdueHistorySeries): number {
+
+/** Faixa horizontal de cada dia: encosta nos vizinhos para toda a área ser clicável. */
+function dayBand(index: number): { x: number; width: number } {
+  const count = points.value.length;
+  if (count <= 1) return { x: pad.left, width: plotWidth };
+  const half = plotWidth / (count - 1) / 2;
+  const left = index === 0 ? pad.left : x(index) - half;
+  const right = index === count - 1 ? pad.left + plotWidth : x(index) + half;
+  return { x: left, width: Math.max(0, right - left) };
+}
+
+function emitSeries(index: number, series: OverdueHistorySeries): void {
   const point = points.value[index];
-  if (!point || point.remaining !== point.resolved) return x(index);
-  return x(index) + (series === "remaining" ? -6 : 6);
+  if (point) emit("select", { date: point.date, series });
+}
+
+/**
+ * Sem as bolinhas, o clique em qualquer ponto do dia abre a série mais próxima
+ * do cursor. Teclado (Enter/Espaço) abre o acumulado de regularizações.
+ */
+function selectDay(index: number, event: MouseEvent): void {
+  const point = points.value[index];
+  if (!point) return;
+  const rect = event.currentTarget as SVGRectElement | null;
+  const svg = rect?.ownerSVGElement;
+  const bounds = svg?.getBoundingClientRect();
+  if (!bounds?.height) {
+    emitSeries(index, "resolved");
+    return;
+  }
+  const viewY = ((event.clientY - bounds.top) / bounds.height) * height;
+  const toRemaining = Math.abs(viewY - y(point.remaining));
+  const toResolved = Math.abs(viewY - y(point.resolved));
+  emitSeries(index, toRemaining <= toResolved ? "remaining" : "resolved");
 }
 
 const yTicks = computed(() => {
@@ -194,31 +220,20 @@ const tooltipStyle = computed(() => {
 
           <template v-for="(point, index) in points" :key="point.date">
             <rect
-              :x="x(index) - plotWidth / Math.max(1, points.length * 2)"
+              :x="dayBand(index).x"
               y="0"
-              :width="plotWidth / Math.max(1, points.length)"
+              :width="dayBand(index).width"
               :height="height"
               fill="transparent"
+              class="chart-hit-area"
+              role="button"
+              tabindex="0"
+              :aria-label="dayAriaLabel(point)"
               @mouseenter="hoveredIndex = index"
               @mouseleave="hoveredIndex = null"
-            />
-            <circle
-              :cx="dotX(index, 'remaining')" :cy="y(point.remaining)" :r="hoveredIndex === index ? 6 : 5"
-              class="curve-dot curve-remaining-dot" role="button" tabindex="0"
-              :aria-label="pointAriaLabel(point, 'remaining')"
-              @mouseenter="hoveredIndex = index"
-              @click="emit('select', { date: point.date, series: 'remaining' })"
-              @keydown.enter.prevent="emit('select', { date: point.date, series: 'remaining' })"
-              @keydown.space.prevent="emit('select', { date: point.date, series: 'remaining' })"
-            />
-            <circle
-              :cx="dotX(index, 'resolved')" :cy="y(point.resolved)" :r="hoveredIndex === index ? 6 : 5"
-              class="curve-dot curve-resolved-dot" role="button" tabindex="0"
-              :aria-label="pointAriaLabel(point, 'resolved')"
-              @mouseenter="hoveredIndex = index"
-              @click="emit('select', { date: point.date, series: 'resolved' })"
-              @keydown.enter.prevent="emit('select', { date: point.date, series: 'resolved' })"
-              @keydown.space.prevent="emit('select', { date: point.date, series: 'resolved' })"
+              @click="selectDay(index, $event)"
+              @keydown.enter.prevent="emitSeries(index, 'resolved')"
+              @keydown.space.prevent="emitSeries(index, 'resolved')"
             />
             <text :x="x(index)" :y="height - 16" text-anchor="middle" class="chart-x-label" :class="{ 'chart-x-label--active': hoveredIndex === index }">
               {{ formatDateLabel(point.date) }}
@@ -237,7 +252,7 @@ const tooltipStyle = computed(() => {
       <div class="chart-legend">
         <span class="chart-legend-item"><span class="chart-legend-square curve-remaining-dot" />Vencidos restantes</span>
         <span class="chart-legend-item"><span class="chart-legend-square curve-resolved-dot" />Regularizações (acumulado)</span>
-        <span class="chart-legend-hint">Clique em um ponto para ver os contratos.</span>
+        <span class="chart-legend-hint">Clique em um dia para ver os contratos.</span>
       </div>
     </div>
   </DashboardCard>
@@ -344,15 +359,12 @@ const tooltipStyle = computed(() => {
 .curve-resolved {
   stroke: #4a7b36;
 }
-.curve-dot {
+.chart-hit-area {
   cursor: pointer;
-  stroke: #ffffff;
-  stroke-width: 1.5;
 }
-.curve-dot:focus {
-  outline: none;
-  stroke: #20324a;
-  stroke-width: 2.5;
+.chart-hit-area:focus {
+  outline: 2px solid #20324a;
+  outline-offset: -2px;
 }
 .curve-remaining-dot {
   fill: #c0392b;
