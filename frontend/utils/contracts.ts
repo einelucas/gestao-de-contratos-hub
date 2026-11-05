@@ -2,6 +2,39 @@ import type { Contract, ContractAlert } from "~/types/api";
 
 export type StatusFilter = "Todos" | "Regularizacao" | "Vencido" | "Atencao" | "Regular" | "Finalizado";
 export type SortMode = "Status e vencimento" | "Vencimento mais próximo";
+export type ValueCompositionFilter = "Todos" | "MaterialProprio" | "MaterialTerceiros" | "SomenteServicos";
+
+export const VALUE_COMPOSITION_OPTIONS: Array<{ value: ValueCompositionFilter; label: string }> = [
+  { value: "Todos", label: "Todos" },
+  { value: "MaterialProprio", label: "Com material próprio" },
+  { value: "MaterialTerceiros", label: "Com material de terceiros" },
+  { value: "SomenteServicos", label: "Somente serviços" },
+];
+
+/** Valores vêm da API como string (Decimal) ou número; normaliza para comparação. */
+function numeric(value: string | number | null | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Filtro por composição do valor do contrato:
+ * - MaterialProprio: possui material próprio (pode ter também serviço/terceiros);
+ * - MaterialTerceiros: possui material de terceiros (pode ter também os demais);
+ * - SomenteServicos: não possui material próprio nem de terceiros e tem serviço.
+ */
+export function matchesValueComposition(
+  contract: Pick<Contract, "serviceValue" | "ownMaterialValue" | "thirdPartyMaterialValue">,
+  filter: ValueCompositionFilter,
+): boolean {
+  if (filter === "Todos") return true;
+  const service = numeric(contract.serviceValue);
+  const own = numeric(contract.ownMaterialValue);
+  const thirdParty = numeric(contract.thirdPartyMaterialValue);
+  if (filter === "MaterialProprio") return own > 0;
+  if (filter === "MaterialTerceiros") return thirdParty > 0;
+  return own === 0 && thirdParty === 0 && service > 0;
+}
 
 /**
  * Unidades padronizadas do cadastro de contratos. O formulário usa esta lista
