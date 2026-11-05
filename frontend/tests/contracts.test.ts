@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysToEndLabel, matchesValueComposition, overdueDays, overdueLabel } from "~/utils/contracts";
+import { daysToEndLabel, matchesValueComposition, matchesValueRange, overdueDays, overdueLabel } from "~/utils/contracts";
 
 describe("daysToEndLabel", () => {
   it("nunca mostra '0 dias' — usa 'Vence hoje'", () => {
@@ -75,5 +75,33 @@ describe("matchesValueComposition", () => {
 
   it("normaliza valores numéricos e textuais da API", () => {
     expect(matchesValueComposition({ serviceValue: "0", ownMaterialValue: 10.5, thirdPartyMaterialValue: "0" }, "MaterialProprio")).toBe(true);
+  });
+});
+
+describe("matchesValueRange", () => {
+  const contract = { totalValue: "12500.75" };
+
+  it("aceita tudo quando não há limites", () => {
+    expect(matchesValueRange(contract, "", "")).toBe(true);
+    expect(matchesValueRange(contract, null, undefined)).toBe(true);
+  });
+
+  it("aplica mínimo e máximo inclusivos", () => {
+    expect(matchesValueRange(contract, 12500.75, 12500.75)).toBe(true);
+    expect(matchesValueRange(contract, 10000, 20000)).toBe(true);
+    expect(matchesValueRange(contract, 12501, null)).toBe(false);
+    expect(matchesValueRange(contract, null, 12500)).toBe(false);
+  });
+
+  it("aceita apenas um dos limites", () => {
+    expect(matchesValueRange(contract, 10000, "")).toBe(true);
+    expect(matchesValueRange(contract, 0, 13000)).toBe(true);
+    expect(matchesValueRange(contract, "", 10000)).toBe(false);
+  });
+
+  it("normaliza total textual e trata valores inválidos como zero", () => {
+    expect(matchesValueRange({ totalValue: "0" }, 1, null)).toBe(false);
+    expect(matchesValueRange({ totalValue: 0 }, 0, 0)).toBe(true);
+    expect(matchesValueRange({ totalValue: "abc" }, 0, null)).toBe(true);
   });
 });

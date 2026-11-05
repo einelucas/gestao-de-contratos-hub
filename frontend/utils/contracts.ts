@@ -97,6 +97,23 @@ export function sortContracts(items: Contract[], mode: SortMode): Contract[] {
   });
 }
 
+/**
+ * Filtro por faixa do valor total do contrato (R$). Limites vazios/nulos são
+ * ignorados; os limites são inclusivos.
+ */
+export function matchesValueRange(
+  contract: Pick<Contract, "totalValue">,
+  min: string | number | null | undefined,
+  max: string | number | null | undefined,
+): boolean {
+  const total = numeric(contract.totalValue);
+  const minValue = min === "" || min === null || min === undefined ? null : Number(min);
+  const maxValue = max === "" || max === null || max === undefined ? null : Number(max);
+  if (minValue !== null && Number.isFinite(minValue) && total < minValue) return false;
+  if (maxValue !== null && Number.isFinite(maxValue) && total > maxValue) return false;
+  return true;
+}
+
 /** Situação da consulta de equipes de um setor no formulário de contrato. */
 export type TeamsLoadStatus = "loading" | "loaded" | "error";
 
