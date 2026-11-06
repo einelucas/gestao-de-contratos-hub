@@ -6,6 +6,9 @@ import {
   CalendarClock,
   Building2,
   CalendarDays,
+  Check,
+  ChevronDown,
+  Copy,
   Loader2,
   Paperclip,
   Pencil,
@@ -79,6 +82,24 @@ const draggedId = ref<string | null>(null);
 const overStage = ref<UiAuditStage | null>(null);
 
 const selectedContract = ref<Contract | null>(null);
+
+const copiedNumber = ref(false);
+let copiedNumberTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function copyContractNumber(): Promise<void> {
+  const contract = selectedContract.value;
+  if (!contract) return;
+  try {
+    await navigator.clipboard.writeText(contract.contractNumber);
+    copiedNumber.value = true;
+    if (copiedNumberTimer) clearTimeout(copiedNumberTimer);
+    copiedNumberTimer = setTimeout(() => {
+      copiedNumber.value = false;
+    }, 1500);
+  } catch {
+    copiedNumber.value = false;
+  }
+}
 
 const INITIAL_STAGE_LIMIT = 10;
 const STAGE_LIMIT_STEP = 10;
@@ -894,6 +915,7 @@ onBeforeUnmount(() => {
   clearInterval(stageClockTimer);
   window.removeEventListener("keydown", handleAuditKeydown);
   if (publishNoticeTimer) clearTimeout(publishNoticeTimer);
+  if (copiedNumberTimer) clearTimeout(copiedNumberTimer);
   clearPendingAttachments();
 });
 
@@ -1238,8 +1260,41 @@ function moveSelectedForward(): void {
   void moveContract(contract, targetStage.key);
 }
 
+// Opções do seletor direto de etapa. "Não iniciado" só aparece quando é a
+// etapa atual: é o backlog e não pode ser escolhido novamente depois de sair.
+const stageSelectOptions = computed(() =>
+  STAGES.filter(
+    (stage) =>
+      stage.key !== "NAO_INICIADO" ||
+      selectedUiStage.value === "NAO_INICIADO",
+  ),
+);
+
+// Permite pular direto para qualquer etapa, além das setas de avançar/voltar.
+async function onStageSelect(event: Event): Promise<void> {
+  const select = event.target as HTMLSelectElement;
+  const contract = selectedContract.value;
+  const stage = select.value as UiAuditStage;
+
+  if (
+    !contract ||
+    !contract.canEdit ||
+    stage === "NAO_INICIADO" ||
+    uiStageFor(contract) === stage
+  ) {
+    select.value = selectedUiStage.value ?? "";
+    return;
+  }
+
+  await moveContract(contract, stage);
+  // Confirmação cancelada ou falha na API: volta a exibir a etapa real.
+  select.value = selectedUiStage.value ?? "";
+}
+
 function openContract(item: Contract): void {
   selectedContract.value = item;
+  copiedNumber.value = false;
+  if (copiedNumberTimer) clearTimeout(copiedNumberTimer);
   activeAuditTab.value = "updates";
   newUpdateText.value = "";
   clearPendingAttachments();
@@ -1256,6 +1311,8 @@ function openContract(item: Contract): void {
 function closeContract(): void {
   if (route.query.contrato) void router.replace({ query: { ...route.query, contrato: undefined } });
   selectedContract.value = null;
+  copiedNumber.value = false;
+  if (copiedNumberTimer) clearTimeout(copiedNumberTimer);
   activeAuditTab.value = "updates";
   newUpdateText.value = "";
   clearPendingAttachments();
@@ -1688,13 +1745,30 @@ function closeContract(): void {
 
         <header class="audit-detail-header">
 
-          <div>
+          <div class="audit-detail-title">
 
-            <span>
+            <div class="audit-contract-number">
 
-              Contrato {{ selectedContract.contractNumber }}
+              <span class="audit-contract-eyebrow">
 
-            </span>
+                Contrato {{ selectedContract.contractNumber }}
+
+              </span>
+
+              <button
+                type="button"
+                class="audit-copy-number"
+                :class="{ copied: copiedNumber }"
+                :aria-label="copiedNumber ? 'Número copiado' : 'Copiar número do contrato'"
+                :title="copiedNumber ? 'Copiado!' : 'Copiar número do contrato'"
+                @click="copyContractNumber"
+              >
+
+                <component :is="copiedNumber ? Check : Copy" class="size-3.5" />
+
+              </button>
+
+            </div>
 
             <h2>
 
@@ -1835,7 +1909,27 @@ function closeContract(): void {
                 </button>
 
                 <div class="audit-stage-current">
-                  <strong>{{ selectedCurrentStageLabel }}</strong>
+                  <select
+                    class="audit-stage-select"
+                    :value="selectedUiStage ?? ''"
+                    :disabled="!selectedContract.canEdit || Boolean(movingId)"
+                    :aria-label="'Etapa atual: ' + selectedCurrentStageLabel + '. Selecione para trocar de etapa.'"
+                    :title="'Etapa atual: ' + selectedCurrentStageLabel"
+                    @change="onStageSelect"
+                  >
+                    <option
+                      v-for="stage in stageSelectOptions"
+                      :key="stage.key"
+                      :value="stage.key"
+                    >
+                      {{ stage.label }}
+                    </option>
+                  </select>
+
+                  <ChevronDown
+                    class="audit-stage-select-icon"
+                    aria-hidden="true"
+                  />
                 </div>
 
                 <button
@@ -1849,6 +1943,10 @@ function closeContract(): void {
                   →
                 </button>
               </div>
+
+              <small class="audit-stage-hint">
+                Use as setas ou selecione a etapa direto na lista.
+              </small>
             </div>
 
             <div
@@ -3264,6 +3362,90 @@ function closeContract(): void {
 
 }
 
+.audit-contract-number {
+
+  display: flex;
+
+  min-width: 0;
+
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 4px;
+
+}
+
+.audit-detail-header .audit-contract-eyebrow {
+
+  display: block;
+
+  overflow: hidden;
+
+  min-width: 0;
+
+  margin: 0;
+
+  color: #304f7e;
+
+  font-size: 16px;
+
+  font-weight: 850;
+
+  letter-spacing: 0.06em;
+
+  text-overflow: ellipsis;
+
+  text-transform: uppercase;
+
+  white-space: nowrap;
+
+}
+
+.audit-copy-number {
+
+  display: grid;
+
+  width: 28px;
+
+  height: 28px;
+
+  flex: 0 0 28px;
+
+  place-items: center;
+
+  border: 1px solid #e1e7ef;
+
+  border-radius: 7px;
+
+  background: #fff;
+
+  color: #64748b;
+
+  cursor: pointer;
+
+  transition: 0.15s ease;
+
+}
+
+.audit-copy-number:hover {
+
+  background: #f3f6fa;
+
+  color: #304f7e;
+
+}
+
+.audit-copy-number.copied {
+
+  border-color: #b7dcaa;
+
+  background: #edf7e9;
+
+  color: #4a7b36;
+
+}
+
 .audit-detail-header span {
 
   display: block;
@@ -3463,21 +3645,61 @@ function closeContract(): void {
 }
 
 .audit-stage-current {
-  display: grid;
+  position: relative;
+  display: flex;
   min-height: 38px;
-  place-items: center;
-  padding: 7px 10px;
+  align-items: center;
   border: 1px solid #dce3ec;
   border-radius: 9px;
   background: #fff;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.audit-stage-current strong {
+.audit-stage-current:focus-within {
+  border-color: #9fb1c8;
+  box-shadow: 0 0 0 3px rgba(48, 79, 126, 0.12);
+}
+
+.audit-stage-select {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 26px 0 10px;
+  border: 0;
+  border-radius: 9px;
+  outline: none;
+  appearance: none;
+  background: transparent;
   color: #2c3f58;
   font-size: 11px;
   font-weight: 750;
   line-height: 1.3;
   text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+}
+
+.audit-stage-select:disabled {
+  color: #6f8096;
+  cursor: default;
+}
+
+.audit-stage-select-icon {
+  position: absolute;
+  right: 8px;
+  width: 13px;
+  height: 13px;
+  color: #6f8096;
+  pointer-events: none;
+}
+
+.audit-stage-hint {
+  color: #8491a3;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .audit-stage-arrow {

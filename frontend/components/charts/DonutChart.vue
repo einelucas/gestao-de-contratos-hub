@@ -188,14 +188,14 @@ const ariaLabel = computed(() =>
 <style scoped>
 .donut-chart {
   width: 100%;
-  min-height: 330px;
+  min-height: 390px;
 
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 
-  gap: 12px;
+  gap: 14px;
 }
 
 /*
@@ -203,8 +203,8 @@ const ariaLabel = computed(() =>
  * O tamanho fica padronizado no próprio componente.
  */
 .donut-visual {
-  width: min(100%, 290px);
-  height: 240px;
+  width: min(100%, 360px);
+  height: 320px;
 
   display: flex;
   align-items: center;
@@ -239,7 +239,7 @@ const ariaLabel = computed(() =>
  * Percentuais exibidos ao redor do gráfico.
  */
 .donut-value {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 500;
 
   cursor: default;
@@ -312,16 +312,16 @@ const ariaLabel = computed(() =>
  */
 @media (max-width: 768px) {
   .donut-chart {
-    min-height: 285px;
+    min-height: 330px;
   }
 
   .donut-visual {
-    width: min(100%, 250px);
-    height: 210px;
+    width: min(100%, 290px);
+    height: 250px;
   }
 
   .donut-value {
-    font-size: 7.5px;
+    font-size: 8px;
   }
 
   .donut-legend-item {
