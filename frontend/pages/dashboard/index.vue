@@ -100,8 +100,13 @@ const statusDonut = computed(() => {
 });
 
 const regularizationTotal = computed(() => summary.value?.kpis.regularization ?? 0);
+// No bloco "em regularização" só interessam os status próprios do recorte:
+// "Regulares" e "Vencidos pendentes" já aparecem nos indicadores acima.
+const REGULARIZATION_HIDDEN_STATUSES = new Set<ContractAlert>(["Regular", "Vencido"]);
 const regularizationBreakdown = computed(() =>
-  (summary.value?.regularizationByStatus ?? []).filter((item) => item.count > 0),
+  (summary.value?.regularizationByStatus ?? []).filter(
+    (item) => item.count > 0 && !REGULARIZATION_HIDDEN_STATUSES.has(item.key),
+  ),
 );
 
 const statusSeries = [
@@ -347,17 +352,19 @@ watch(filters, load, { deep: true, immediate: true });
                 </div>
                 <button type="button" class="regularization-block-link" @click="onRegularizationSelect">Ver todos</button>
               </div>
-              <p class="regularization-block-note">Recorte sobre os status acima — não soma ao total.</p>
-              <ul class="regularization-block-list">
-                <li v-for="item in regularizationBreakdown" :key="item.key">
-                  <button type="button" @click="onRegularizationStatusSelect(item)">
-                    <span class="regularization-dot" :style="{ backgroundColor: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR] }" />
-                    <span>{{ item.label }}</span>
-                    <strong>{{ item.count }}</strong>
-                    <small>{{ formatPercent(item.percent) }}</small>
-                  </button>
-                </li>
-              </ul>
+              <template v-if="regularizationBreakdown.length">
+                <p class="regularization-block-note">Recorte sobre os status acima — não soma ao total.</p>
+                <ul class="regularization-block-list">
+                  <li v-for="item in regularizationBreakdown" :key="item.key">
+                    <button type="button" @click="onRegularizationStatusSelect(item)">
+                      <span class="regularization-dot" :style="{ backgroundColor: STATUS_COLOR[item.key as keyof typeof STATUS_COLOR] }" />
+                      <span>{{ item.label }}</span>
+                      <strong>{{ item.count }}</strong>
+                      <small>{{ formatPercent(item.percent) }}</small>
+                    </button>
+                  </li>
+                </ul>
+              </template>
             </div>
           </DashboardCard>
 
