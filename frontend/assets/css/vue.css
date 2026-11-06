@@ -659,10 +659,10 @@ button:disabled {
 }
 .contract-filter-bar {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(160px, 1.25fr) minmax(
-      120px,
-      0.75fr
-    ) minmax(140px, 0.9fr) minmax(175px, 1.1fr) minmax(150px, 0.9fr) auto;
+  grid-template-columns: minmax(170px, 1fr) minmax(180px, 1.35fr) minmax(
+      130px,
+      0.8fr
+    ) minmax(130px, 0.8fr) minmax(190px, 1.2fr) auto;
   gap: 10px;
   align-items: end;
   padding: 16px 18px;
@@ -684,28 +684,6 @@ button:disabled {
 .contract-filter-bar select {
   height: 38px;
   min-width: 0;
-  border: 1px solid #dce4ee;
-  border-radius: 9px;
-  background: #fff;
-  padding: 0 9px;
-  color: #334155;
-  font-size: 12px;
-  outline: none;
-}
-.contract-filter-bar .value-range-inputs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.contract-filter-bar .value-range-inputs > span {
-  color: #94a3b8;
-  font-size: 12px;
-}
-.contract-filter-bar .value-range-inputs input {
-  width: 100%;
-  min-width: 0;
-  height: 38px;
   border: 1px solid #dce4ee;
   border-radius: 9px;
   background: #fff;
@@ -1347,9 +1325,6 @@ button:disabled {
   }
   .filter-actions {
     justify-content: flex-end;
-  }
-  .contract-filter-bar:not(.dashboard-filter-bar) .filter-actions {
-    grid-column: 1 / -1;
   }
 }
 @media (max-width: 1159px) {

@@ -2,7 +2,7 @@
 import { Bell, CalendarX, CheckCheck, CheckCircle2, CircleCheck, FileText, Grid2X2, List, Plus, RefreshCw, TriangleAlert, Upload, X } from "lucide-vue-next";
 import type { Contract } from "~/types/api";
 import type { SortMode, StatusFilter, ValueCompositionFilter } from "~/utils/contracts";
-import { matchesValueComposition, matchesValueRange, money, sortContracts, VALUE_COMPOSITION_OPTIONS } from "~/utils/contracts";
+import { matchesValueComposition, sortContracts, VALUE_COMPOSITION_OPTIONS } from "~/utils/contracts";
 definePageMeta({ middleware: "auth" });
 
 const { contracts, sectors, loading, error, sectorsError, lastUpdated, bootstrap, loadContracts, loadSectors } = useContracts();
@@ -25,7 +25,7 @@ const route = useRoute(); const router = useRouter();
 const { count: attentionCount, load: loadAttention } = useAttention();
 const exportTrigger = useState<number>('contracts-export-trigger', () => 0);
 const { excel } = useExport();
-const supplier = ref('Todos'); const unit = ref('Todas'); const situation = ref('Todos'); const valueComposition = ref<ValueCompositionFilter>('Todos'); const minValue = ref<string|number>(''); const maxValue = ref<string|number>(''); const statusFilter = ref<StatusFilter>('Todos'); const sortMode = ref<SortMode>('Status e vencimento'); const viewMode = ref<'grid'|'list'>('grid'); const page = ref(1); const selected = ref<Contract|null>(null); const perPage = ref(20);
+const supplier = ref('Todos'); const unit = ref('Todas'); const situation = ref('Todos'); const valueComposition = ref<ValueCompositionFilter>('Todos'); const statusFilter = ref<StatusFilter>('Todos'); const sortMode = ref<SortMode>('Status e vencimento'); const viewMode = ref<'grid'|'list'>('grid'); const page = ref(1); const selected = ref<Contract|null>(null); const perPage = ref(20);
 
 await bootstrap();
 
@@ -80,16 +80,16 @@ watch(exportTrigger, () => {
 });
 const suppliers = computed(() => ['Todos', ...Array.from(new Set(contracts.value.map(c => c.supplier))).sort((a,b)=>a.localeCompare(b,'pt-BR'))]);
 const units = computed(() => ['Todas', ...Array.from(new Set(contracts.value.map(c => c.unit).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pt-BR'))]);
-const baseFiltered = computed(() => contracts.value.filter(c => { const q=globalSearch.value.trim().toLowerCase(); return (!q || c.supplier.toLowerCase().includes(q) || c.contractNumber.toLowerCase().startsWith(q)) && (supplier.value==='Todos'||c.supplier===supplier.value) && (unit.value==='Todas'||c.unit===unit.value) && (situation.value==='Todos'||c.situation===situation.value) && matchesValueComposition(c, valueComposition.value) && matchesValueRange(c, minValue.value, maxValue.value); }));
+const baseFiltered = computed(() => contracts.value.filter(c => { const q=globalSearch.value.trim().toLowerCase(); return (!q || c.supplier.toLowerCase().includes(q) || c.contractNumber.toLowerCase().startsWith(q)) && (supplier.value==='Todos'||c.supplier===supplier.value) && (unit.value==='Todas'||c.unit===unit.value) && (situation.value==='Todos'||c.situation===situation.value) && matchesValueComposition(c, valueComposition.value); }));
 const kpis = computed(() => ({ total: baseFiltered.value.length, regularization: baseFiltered.value.filter(c=>c.alert==='Regularizacao').length, vencido: baseFiltered.value.filter(c=>c.alert==='Vencido').length, atencao: baseFiltered.value.filter(c=>c.alert==='Atencao').length, regular: baseFiltered.value.filter(c=>c.alert==='Regular').length, finalizado: baseFiltered.value.filter(c=>c.alert==='Finalizado').length }));
 const filtered = computed(() => sortContracts(baseFiltered.value.filter(c => statusFilter.value==='Todos' || c.alert===statusFilter.value), sortMode.value));
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / perPage.value)));
 const pageItems = computed(() => filtered.value.slice((page.value-1)*perPage.value, page.value*perPage.value));
-watch([globalSearch,supplier,unit,situation,valueComposition,minValue,maxValue,statusFilter,sortMode],()=>page.value=1);
+watch([globalSearch,supplier,unit,situation,valueComposition,statusFilter,sortMode],()=>page.value=1);
 watch(totalPages, value => { if(page.value>value) page.value=value; });
 function setStatus(value: StatusFilter){ statusFilter.value = statusFilter.value === value ? 'Todos' : value; }
 
-type ActiveFilterKey = 'search' | 'supplier' | 'unit' | 'situation' | 'valueComposition' | 'valueRange' | 'status';
+type ActiveFilterKey = 'search' | 'supplier' | 'unit' | 'situation' | 'valueComposition' | 'status';
 interface ActiveFilter { key: ActiveFilterKey; label: string; value: string }
 
 const STATUS_LABELS: Record<Exclude<StatusFilter, 'Todos'>, string> = {
@@ -112,13 +112,6 @@ const activeFilters = computed<ActiveFilter[]>(() => {
     const composition = VALUE_COMPOSITION_OPTIONS.find(option => option.value === valueComposition.value);
     items.push({ key: 'valueComposition', label: 'Valores', value: composition?.label ?? valueComposition.value });
   }
-  const hasMin = minValue.value !== '' && minValue.value !== null && minValue.value !== undefined;
-  const hasMax = maxValue.value !== '' && maxValue.value !== null && maxValue.value !== undefined;
-  if (hasMin || hasMax) {
-    const min = hasMin ? money(Number(minValue.value)) : '';
-    const max = hasMax ? money(Number(maxValue.value)) : '';
-    items.push({ key: 'valueRange', label: 'Valor total', value: min && max ? `${min} – ${max}` : min ? `≥ ${min}` : `≤ ${max}` });
-  }
   if (statusFilter.value !== 'Todos') items.push({ key: 'status', label: 'Status', value: STATUS_LABELS[statusFilter.value] });
   return items;
 });
@@ -129,7 +122,6 @@ function removeFilter(key: ActiveFilterKey): void {
   else if (key === 'unit') unit.value = 'Todas';
   else if (key === 'situation') situation.value = 'Todos';
   else if (key === 'valueComposition') valueComposition.value = 'Todos';
-  else if (key === 'valueRange') { minValue.value = ''; maxValue.value = ''; }
   else if (key === 'status') statusFilter.value = 'Todos';
 }
 
@@ -139,8 +131,6 @@ function clearFilters(): void {
   unit.value = 'Todas';
   situation.value = 'Todos';
   valueComposition.value = 'Todos';
-  minValue.value = '';
-  maxValue.value = '';
   statusFilter.value = 'Todos';
 }
 </script>
@@ -161,7 +151,6 @@ function clearFilters(): void {
           <label><span>Unidade</span><select v-model="unit"><option v-for="item in units" :key="item">{{ item }}</option></select></label>
           <label><span>Situação</span><select v-model="situation"><option>Todos</option><option>Vigente</option><option>Vencido</option><option>Finalizado</option></select></label>
           <label><span>Valores</span><select v-model="valueComposition"><option v-for="option in VALUE_COMPOSITION_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
-          <label class="value-range-field"><span>Valor total (R$)</span><div class="value-range-inputs"><input v-model.number="minValue" type="number" min="0" step="0.01" placeholder="Mín." aria-label="Valor mínimo" /><span>—</span><input v-model.number="maxValue" type="number" min="0" step="0.01" placeholder="Máx." aria-label="Valor máximo" /></div></label>
           <label class="sort-field"><span>Ordenação</span><select v-model="sortMode"><option>Status e vencimento</option><option>Vencimento mais próximo</option></select></label>
           <div class="filter-actions"><button v-if="canCreate" type="button" class="new-contract-button" @click="creating = true"><Plus class="size-4" />Novo contrato</button><button class="icon-control" :class="{ active: viewMode==='grid' }" @click="viewMode='grid'"><Grid2X2 class="size-4" /></button><button class="icon-control" :class="{ active: viewMode==='list' }" @click="viewMode='list'"><List class="size-4" /></button><button class="icon-control" title="Atualizar" @click="loadContracts(); loadAttention()"><RefreshCw class="size-4" /></button><button class="icon-control notification-control" title="Notificações" @click="notificationTrigger++"><Bell class="size-4" /><span v-if="attentionCount">{{ attentionCount }}</span></button></div>
         </div>
