@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from app.models.contracts import Contract, Sector, Supplier, UserSectorPermission
+from app.models.contracts import (
+    Contract,
+    ContractAuditActivity,
+    Sector,
+    Supplier,
+    UserSectorPermission,
+)
 from app.modules.contracts.rules import contracts_today
 
 BOARD_URL = "/api/v1/contratos/auditoria"
@@ -351,6 +357,33 @@ async def test_regular_contract_can_start_audit_and_workspace_is_persisted(
     )
     assert attachment.status_code == 200
     assert attachment.content == b"conteudo"
+
+
+async def test_workspace_accepts_legacy_stage_in_activity_history(
+    client, auth_header, db_session
+) -> None:
+    """Atividades antigas podem citar etapas já removidas do fluxo."""
+    ids = await _seed(db_session)
+    db_session.add(
+        ContractAuditActivity(
+            contractId=ids["overdue"],
+            type="STAGE",
+            message="moveu o contrato entre etapas",
+            fromStage="CHAMADO_ELES",
+            toStage="ANALISE_INTERNA_INPASA",
+        )
+    )
+    await db_session.commit()
+
+    workspace = await client.get(
+        f"/api/v1/contratos/{ids['overdue']}/auditoria/workspace",
+        headers=auth_header("ADMIN"),
+    )
+
+    assert workspace.status_code == 200, workspace.text
+    activity = workspace.json()["activity"][0]
+    assert activity["fromStage"] == "AGUARDANDO_ANALISE"
+    assert activity["toStage"] == "ANALISE_INTERNA_INPASA"
 
 
 async def test_audit_stages_count_as_regularization_without_reclassifying_overdue(

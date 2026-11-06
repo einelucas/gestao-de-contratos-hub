@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
+from typing import cast, get_args
 
 from fastapi import UploadFile
 from sqlalchemy import Text, func, select
@@ -40,6 +40,11 @@ from app.shared.audit import record_audit
 
 MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 MAX_ATTACHMENTS_PER_UPDATE = 5
+
+_CURRENT_AUDIT_STAGES = frozenset(get_args(AuditStage))
+# Etapas removidas do fluxo continuam no histórico e não devem quebrar o
+# workspace de contratos que passaram por elas.
+_LEGACY_AUDIT_STAGES: dict[str, AuditStage] = {"CHAMADO_ELES": "AGUARDANDO_ANALISE"}
 
 
 async def _contract_with_access(
@@ -84,6 +89,14 @@ def _update_out(item: ContractAuditUpdate, actor: CurrentUser) -> AuditUpdateOut
     )
 
 
+def _activity_stage(value: str | None) -> AuditStage | None:
+    if value is None:
+        return None
+    if value in _CURRENT_AUDIT_STAGES:
+        return cast(AuditStage, value)
+    return _LEGACY_AUDIT_STAGES.get(value)
+
+
 def _activity_out(item: ContractAuditActivity) -> AuditActivityOut:
     return AuditActivityOut(
         id=item.id,
@@ -92,8 +105,8 @@ def _activity_out(item: ContractAuditActivity) -> AuditActivityOut:
         message=item.message,
         user_id=item.actorId,
         user_name=item.actor.name if item.actor else "Usuário removido",
-        from_stage=cast(AuditStage | None, item.fromStage),
-        to_stage=cast(AuditStage | None, item.toStage),
+        from_stage=_activity_stage(item.fromStage),
+        to_stage=_activity_stage(item.toStage),
         created_at=item.createdAt,
     )
 
