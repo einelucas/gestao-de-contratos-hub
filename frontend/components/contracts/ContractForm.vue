@@ -285,26 +285,30 @@ async function submit(): Promise<void> {
 <template>
   <AppModal :open="open" :title="title" @close="emit('close')">
     <form id="contract-form" class="contract-form" @submit.prevent="submit">
+      <p class="form-required-note">
+        Campos marcados com <span class="required-mark" aria-hidden="true">*</span> são obrigatórios.
+      </p>
+
       <fieldset>
         <legend>Dados do contrato</legend>
         <div class="form-grid">
           <label>
-            <span>Número do contrato</span>
+            <span>Número do contrato <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
             <input v-if="mode === 'create'" v-model="form.contractNumber" required maxlength="80" placeholder="Ex.: 21634" />
             <input v-else :value="form.contractNumber" disabled />
           </label>
           <label>
-            <span>Setor</span>
+            <span>Setor <span class="required-mark" aria-hidden="true">*</span></span>
             <select v-if="editableSectors.length > 1" v-model="form.sectorId" required>
               <option value="" disabled>Selecione o setor</option>
               <option v-for="sector in editableSectors" :key="sector.id" :value="sector.id">{{ sector.name }}</option>
             </select>
             <input v-else :value="editableSectors[0]?.name ?? ''" disabled />
           </label>
-          <label class="span-2"><span>Fornecedor</span><input v-model="form.supplier" required maxlength="240" /></label>
-          <label class="span-2"><span>Prestação / objeto</span><textarea v-model="form.serviceDescription" rows="2" :required="mode === 'create'" /></label>
+          <label class="span-2"><span>Fornecedor <span class="required-mark" aria-hidden="true">*</span></span><input v-model="form.supplier" required maxlength="240" /></label>
+          <label class="span-2"><span>Prestação / objeto <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><textarea v-model="form.serviceDescription" rows="2" :required="mode === 'create'" /></label>
           <label>
-            <span>Unidade</span>
+            <span>Unidade <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
             <select v-model="form.unit" :required="mode === 'create'">
               <option value="" disabled>Selecione a unidade</option>
               <option v-for="option in unitOptions" :key="option" :value="option">
@@ -312,19 +316,21 @@ async function submit(): Promise<void> {
               </option>
             </select>
           </label>
-          <label class="checkbox-field"><input v-model="form.finalized" type="checkbox" /><span>Contrato finalizado</span></label>
-          <label><span>Início da vigência</span><input v-model="form.startDate" type="date" :required="mode === 'create'" /></label>
-          <label><span>Fim da vigência original</span><input v-model="form.endDate" type="date" :required="mode === 'create'" /></label>
-          <label class="checkbox-field"><input v-model="form.dilation" type="checkbox" /><span>Contrato em dilação</span></label>
+          <label><span>Início da vigência <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.startDate" type="date" :required="mode === 'create'" /></label>
+          <label><span>Fim da vigência original <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.endDate" type="date" :required="mode === 'create'" /></label>
           <label v-if="form.dilation"><span>Vigência da dilação até</span><input v-model="form.dilationEndDate" type="date" :min="form.endDate || undefined" /></label>
           <p v-if="form.dilation" class="form-hint span-2">Ao término da dilação, o contrato será considerado finalizado automaticamente e não passará por vencido.</p>
           <label>
-            <span>Criticidade</span>
+            <span>Criticidade <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
             <select v-model="form.criticality" :required="mode === 'create'">
               <option value="" :disabled="mode === 'create'">{{ mode === 'create' ? 'Selecione a criticidade' : 'Não informada' }}</option>
               <option v-for="(label, key) in CRITICALITY_LABEL" :key="key" :value="key">{{ label }}</option>
             </select>
           </label>
+        </div>
+        <div class="checkbox-row">
+          <label class="checkbox-field"><input v-model="form.finalized" type="checkbox" /><span>Contrato finalizado</span></label>
+          <label class="checkbox-field"><input v-model="form.dilation" type="checkbox" /><span>Contrato em dilação</span></label>
           <label class="checkbox-field"><input v-model="form.autoRenewal" type="checkbox" /><span>Renovação automática</span></label>
         </div>
       </fieldset>
@@ -332,15 +338,25 @@ async function submit(): Promise<void> {
       <fieldset>
         <legend>Valores</legend>
         <div class="form-grid three">
-          <label><span>Serviço (R$)</span><input v-model.number="form.serviceValue" type="number" min="0" step="0.01" :required="mode === 'create'" /></label>
-          <label><span>Material próprio (R$)</span><input v-model.number="form.ownMaterialValue" type="number" min="0" step="0.01" :required="mode === 'create'" /></label>
-          <label><span>Material terceiros (R$)</span><input v-model.number="form.thirdPartyMaterialValue" type="number" min="0" step="0.01" :required="mode === 'create'" /></label>
+          <label>
+            <span>Serviço (R$) <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
+            <CurrencyInput v-model="form.serviceValue" :required="mode === 'create'" aria-label="Valor do serviço" />
+          </label>
+          <label>
+            <span>Material próprio (R$) <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
+            <CurrencyInput v-model="form.ownMaterialValue" :required="mode === 'create'" aria-label="Valor do material próprio" />
+          </label>
+          <label>
+            <span>Material terceiros (R$) <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
+            <CurrencyInput v-model="form.thirdPartyMaterialValue" :required="mode === 'create'" aria-label="Valor do material de terceiros" />
+          </label>
         </div>
-        <p class="form-hint">
-          <template v-if="mode === 'edit' && contract">Total atual: <strong>{{ money(contract.totalValue) }}</strong></template>
-          <template v-if="mode === 'create' || valuesChanged">
-            <template v-if="mode === 'edit'"> · </template>Total calculado: <strong>{{ money(computedTotal) }}</strong>
-          </template>
+        <div class="contract-value-total">
+          <span>Total do contrato</span>
+          <strong>{{ money(computedTotal) }}</strong>
+        </div>
+        <p v-if="mode === 'edit' && contract && valuesChanged" class="form-hint">
+          Total atual: <strong>{{ money(contract.totalValue) }}</strong>
         </p>
       </fieldset>
 

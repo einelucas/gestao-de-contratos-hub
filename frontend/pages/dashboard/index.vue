@@ -74,12 +74,15 @@ const percentOf = (key: string) => summary.value?.byStatus.find((item) => item.k
 const kpiCards = computed(() => {
   const k = kpis.value;
   if (!k) return [];
+  // Mesmo padrão em todos os cards: "N de M (x%)", para os números serem comparáveis.
+  const sub = (count: number, key: string) =>
+    `${formatNumber(count, 0)} de ${formatNumber(k.total, 0)} (${formatPercent(percentOf(key))})`;
   return [
-    { label: "Total de contratos", value: k.total, sub: `${k.active} ativos`, tone: "default" as const, icon: FileText },
-    { label: "Regulares", value: k.regular, sub: formatPercent(percentOf("Regular")), tone: "good" as const, icon: CircleCheck },
-    { label: "Atenção · 20 dias", value: k.atencao, sub: formatPercent(percentOf("Atencao")), tone: "default" as const, icon: TriangleAlert },
-    { label: "Vencidos pendentes", value: k.vencido, sub: formatPercent(percentOf("Vencido")), tone: "bad" as const, icon: CalendarX },
-    { label: "Finalizados", value: k.finalizado, sub: formatPercent(percentOf("Finalizado")), tone: "default" as const, icon: CheckCheck },
+    { label: "Total de contratos", value: k.total, sub: `${formatNumber(k.active, 0)} ativos de ${formatNumber(k.total, 0)} (${formatPercent(k.total ? (k.active * 100) / k.total : 0)})`, tone: "default" as const, icon: FileText },
+    { label: "Regulares", value: k.regular, sub: sub(k.regular, "Regular"), tone: "good" as const, icon: CircleCheck },
+    { label: "Atenção · 20 dias", value: k.atencao, sub: sub(k.atencao, "Atencao"), tone: "default" as const, icon: TriangleAlert },
+    { label: "Vencidos pendentes", value: k.vencido, sub: sub(k.vencido, "Vencido"), tone: "bad" as const, icon: CalendarX },
+    { label: "Finalizados", value: k.finalizado, sub: sub(k.finalizado, "Finalizado"), tone: "default" as const, icon: CheckCheck },
   ];
 });
 

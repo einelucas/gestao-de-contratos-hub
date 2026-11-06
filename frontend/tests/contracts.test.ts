@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysToEndLabel, matchesValueComposition, matchesValueRange, overdueDays, overdueLabel } from "~/utils/contracts";
+import { daysToEndLabel, formatCurrencyInput, matchesValueComposition, matchesValueRange, overdueDays, overdueLabel, parseCurrencyInput } from "~/utils/contracts";
 
 describe("daysToEndLabel", () => {
   it("nunca mostra '0 dias' — usa 'Vence hoje'", () => {
@@ -103,5 +103,38 @@ describe("matchesValueRange", () => {
     expect(matchesValueRange({ totalValue: "0" }, 1, null)).toBe(false);
     expect(matchesValueRange({ totalValue: 0 }, 0, 0)).toBe(true);
     expect(matchesValueRange({ totalValue: "abc" }, 0, null)).toBe(true);
+  });
+});
+
+describe("formatCurrencyInput", () => {
+  it("formata com duas casas e separador pt-BR", () => {
+    expect(formatCurrencyInput(1234.5)).toBe("1.234,50");
+    expect(formatCurrencyInput(0)).toBe("0,00");
+    expect(formatCurrencyInput(9999999.99)).toBe("9.999.999,99");
+  });
+});
+
+describe("parseCurrencyInput", () => {
+  it("aceita os formatos pt-BR e pontos como separador decimal", () => {
+    expect(parseCurrencyInput("1.234,56")).toBe(1234.56);
+    expect(parseCurrencyInput("1234,56")).toBe(1234.56);
+    expect(parseCurrencyInput("1234.56")).toBe(1234.56);
+    expect(parseCurrencyInput("1234")).toBe(1234);
+  });
+
+  it("ignora o prefixo R$ e símbolos digitados", () => {
+    expect(parseCurrencyInput("R$ 1.234,56")).toBe(1234.56);
+  });
+
+  it("trata vazio/inválido como zero e nunca retorna negativo", () => {
+    expect(parseCurrencyInput("")).toBe(0);
+    expect(parseCurrencyInput("abc")).toBe(0);
+    expect(parseCurrencyInput("-10")).toBe(0);
+  });
+
+  it("faz round-trip com formatCurrencyInput", () => {
+    for (const value of [0, 0.5, 12.34, 1234.56, 9876543.21]) {
+      expect(parseCurrencyInput(formatCurrencyInput(value))).toBe(value);
+    }
   });
 });

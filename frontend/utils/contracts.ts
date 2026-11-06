@@ -53,6 +53,33 @@ export function money(value: string | number): string {
   return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+/** Formata um valor para o campo de moeda (sem o símbolo, que fica no prefixo). */
+export function formatCurrencyInput(value: number): string {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Converte o texto digitado no campo de moeda em número.
+ * Aceita "1.234,56", "1234,56", "1234.56" e "1234".
+ */
+export function parseCurrencyInput(value: string): number {
+  const cleaned = value.replace(/[^\d,.-]/g, "").trim();
+  if (!cleaned) return 0;
+  let normalized: string;
+  if (cleaned.includes(",")) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else {
+    const parts = cleaned.split(".");
+    const last = parts[parts.length - 1] ?? "";
+    normalized = parts.length > 1 && last.length <= 2 ? `${parts.slice(0, -1).join("")}.${last}` : cleaned.replace(/\./g, "");
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
 export function dateBr(value: string | null): string {
   if (!value) return "Não informada";
   const [year, month, day] = value.split("-");

@@ -718,6 +718,69 @@ button:disabled {
   display: flex;
   gap: 5px;
 }
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid #edf1f5;
+  padding: 10px 18px;
+  background: #f8fafc;
+}
+.active-filters-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cfdbe8;
+  border-radius: 999px;
+  background: #fff;
+  padding: 4px 5px 4px 10px;
+  color: #334155;
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+.filter-chip-label {
+  color: #718096;
+  font-weight: 700;
+}
+.filter-chip-remove {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #7b8798;
+  cursor: pointer;
+}
+.filter-chip-remove:hover {
+  background: #e8eef6;
+  color: #304f7e;
+}
+.filter-chip-remove:focus-visible,
+.clear-filters:focus-visible {
+  outline: 2px solid #304f7e;
+  outline-offset: 2px;
+}
+.clear-filters {
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  color: #304f7e;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .icon-control {
   position: relative;
   display: grid;
@@ -985,6 +1048,94 @@ button:disabled {
 }
 .contracts-state.error {
   color: #a83128;
+}
+.skeleton-card {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #e3e8ef;
+  border-radius: 13px;
+  background: #fff;
+  padding: 13px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+}
+.skeleton-line,
+.skeleton-meta span {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef2f6 25%, #e2e8f0 37%, #eef2f6 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+.skeleton-line.short {
+  width: 35%;
+}
+.skeleton-line.medium {
+  width: 62%;
+}
+.skeleton-line.long {
+  width: 88%;
+  height: 13px;
+}
+.skeleton-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.skeleton-meta span {
+  flex: 1;
+  height: 26px;
+  border-radius: 8px;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line,
+  .skeleton-meta span {
+    animation: none;
+    background: #eef2f6;
+  }
+}
+.contracts-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 62px 20px;
+  text-align: center;
+}
+.contracts-empty-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef3fa;
+  color: #304f7e;
+}
+.contracts-empty h3 {
+  margin: 4px 0 0;
+  color: #213758;
+  font-size: 15px;
+}
+.contracts-empty p {
+  max-width: 420px;
+  margin: 0;
+  color: #718096;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.contracts-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 .drawer-backdrop,
 .notification-backdrop {
@@ -1627,6 +1778,99 @@ button:disabled {
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
+}
+.checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  margin-top: 12px;
+  border-top: 1px dashed #e7edf4;
+  padding-top: 12px;
+}
+.checkbox-row .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.checkbox-row .checkbox-field > span {
+  color: #31445c;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.form-required-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 11.5px;
+}
+.required-mark {
+  color: #b23b32;
+  font-weight: 800;
+}
+.form-grid label > span .required-mark {
+  color: #b23b32;
+}
+.form-grid .currency-input {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #dce4ee;
+  border-radius: 9px;
+  background: #fff;
+  overflow: hidden;
+}
+.form-grid .currency-input:focus-within {
+  border-color: #304f7e;
+  box-shadow: 0 0 0 3px rgba(48, 79, 126, 0.12);
+}
+.currency-input-prefix {
+  display: grid;
+  align-self: stretch;
+  place-items: center;
+  padding: 0 10px;
+  border-right: 1px solid #e7edf4;
+  background: #f7f9fc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+.form-grid .currency-input input {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  box-shadow: none;
+  padding: 7px 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.form-grid .currency-input input:focus {
+  border: 0;
+  box-shadow: none;
+}
+.contract-value-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid #dbe7f5;
+  border-radius: 10px;
+  background: #f5f9fe;
+  padding: 12px 14px;
+}
+.contract-value-total > span {
+  color: #56657a;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.contract-value-total strong {
+  color: #213758;
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 .notification-history .section-head {
   display: flex;
