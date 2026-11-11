@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertTriangle, BellRing, CheckCircle2, Plus } from "lucide-vue-next";
+import { AlertTriangle, BellRing, CheckCircle2, ChevronDown, Plus, Search } from "lucide-vue-next";
 import type {
   Contract,
   ContractCreatePayload,
@@ -37,7 +37,11 @@ const supplierName = ref("");
 const supplierError = ref("");
 const savingSupplier = ref(false);
 const supplierInput = ref<HTMLInputElement | null>(null);
-const supplierSelect = ref<HTMLSelectElement | null>(null);
+const supplierSelect = ref<HTMLButtonElement | null>(null);
+const supplierSearch = ref<HTMLInputElement | null>(null);
+const supplierPickerOpen = ref(false);
+const supplierQuery = ref("");
+const supplierPanelId = useId();
 const supplierListRequest = createLatestRequest();
 const supplierSaveRequest = createLatestRequest();
 const teamsBySector = ref<Record<string, NotificationTeam[]>>({});
@@ -122,6 +126,56 @@ async function loadTeams(sectorId: string, { force = false } = {}): Promise<void
   }
 }
 
+const supplierOptions = computed(() => {
+  const contract = props.contract;
+  if (contract && !suppliers.value.some((item) => item.id === contract.supplierId)) {
+    return [{ id: contract.supplierId, name: contract.supplier }, ...suppliers.value];
+  }
+  return suppliers.value;
+});
+const selectedSupplier = computed(() => supplierOptions.value.find((item) => item.id === form.supplierId));
+
+function supplierSearchKey(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR");
+}
+
+const filteredSuppliers = computed(() => {
+  const query = supplierSearchKey(supplierQuery.value).trim();
+  if (!query) return supplierOptions.value;
+  const terms = query.split(/\s+/);
+  return supplierOptions.value.filter((item) => {
+    const name = supplierSearchKey(item.name);
+    return terms.every((term) => name.includes(term));
+  });
+});
+
+function closeSupplierPicker(restoreFocus = false): void {
+  supplierPickerOpen.value = false;
+  supplierQuery.value = "";
+  if (restoreFocus) supplierSelect.value?.focus();
+}
+
+async function toggleSupplierPicker(): Promise<void> {
+  if (supplierPickerOpen.value) {
+    closeSupplierPicker();
+    return;
+  }
+  supplierPickerOpen.value = true;
+  await nextTick();
+  supplierSearch.value?.focus();
+}
+
+function onSupplierPickerFocusout(event: FocusEvent): void {
+  if (event.relatedTarget instanceof Node && !(event.currentTarget as HTMLElement).contains(event.relatedTarget)) {
+    closeSupplierPicker();
+  }
+}
+
+function selectSupplier(id: string): void {
+  form.supplierId = id;
+  closeSupplierPicker(true);
+}
+
 async function loadSuppliers(): Promise<void> {
   const ticket = supplierListRequest.begin();
   loadingSuppliers.value = true;
@@ -148,6 +202,7 @@ function resetSupplierEditor(): void {
 }
 
 async function openSupplierEditor(): Promise<void> {
+  closeSupplierPicker();
   addingSupplier.value = true;
   await nextTick();
   supplierInput.value?.focus();
@@ -206,12 +261,14 @@ watch(
   () => [props.open, form.sectorId, props.mode, props.contract?.id] as const,
   ([open, sectorId]) => {
     supplierListRequest.cancel();
+    closeSupplierPicker();
     resetSupplierEditor();
     suppliers.value = [];
     loadingSuppliers.value = false;
     supplierListError.value = false;
     if (open && sectorId) void loadSuppliers();
   },
+  { immediate: true },
 );
 
 // Trocar o setor invalida a equipe do setor anterior (backend também recusa a combinação).
@@ -361,20 +418,24 @@ async function submit(): Promise<void> {
             </select>
             <input v-else :value="editableSectors[0]?.name ?? ''" disabled />
           </label>
-          <div class="span-2">
+          <div class="span-2" @focusout="onSupplierPickerFocusout">
             <div class="supplier-picker">
               <label>
                 <span>Fornecedor <span class="required-mark" aria-hidden="true">*</span></span>
-                <select ref="supplierSelect" v-model="form.supplierId" required :disabled="!form.sectorId || loadingSuppliers">
-                  <option value="" disabled>
-                    {{ loadingSuppliers ? "Carregando fornecedores…" : form.sectorId ? "Selecione o fornecedor" : "Selecione o setor primeiro" }}
-                  </option>
-                  <option
-                    v-if="contract && !suppliers.some((item) => item.id === contract?.supplierId)"
-                    :value="contract.supplierId"
-                  >{{ contract.supplier }}</option>
-                  <option v-for="supplier in suppliers" :key="supplier.id" :value="supplier.id">{{ supplier.name }}</option>
-                </select>
+                <button
+                  ref="supplierSelect"
+                  type="button"
+                  class="btn supplier-trigger"
+                  :aria-label="selectedSupplier ? `Fornecedor: ${selectedSupplier.name}` : 'Selecionar fornecedor'"
+                  :aria-expanded="supplierPickerOpen"
+                  :aria-controls="supplierPanelId"
+                  :disabled="!form.sectorId || loadingSuppliers || addingSupplier || saving"
+                  @click="toggleSupplierPicker"
+                  @keydown.esc="closeSupplierPicker(true)"
+                >
+                  <span>{{ selectedSupplier?.name ?? (loadingSuppliers ? "Carregando fornecedores…" : form.sectorId ? "Selecione o fornecedor" : "Selecione o setor primeiro") }}</span>
+                  <ChevronDown class="size-4 shrink-0" aria-hidden="true" />
+                </button>
               </label>
               <button
                 type="button"
@@ -383,6 +444,34 @@ async function submit(): Promise<void> {
                 :disabled="!form.sectorId || loadingSuppliers || addingSupplier || saving"
                 @click="openSupplierEditor"
               ><Plus class="size-4" aria-hidden="true" />Novo fornecedor</button>
+            </div>
+            <div
+              v-show="supplierPickerOpen"
+              :id="supplierPanelId"
+              class="supplier-panel"
+              @keydown.esc.stop.prevent="closeSupplierPicker(true)"
+            >
+              <label class="supplier-search">
+                <Search class="size-4" aria-hidden="true" />
+                <input
+                  ref="supplierSearch"
+                  v-model="supplierQuery"
+                  type="search"
+                  aria-label="Pesquisar fornecedor"
+                  placeholder="Pesquisar fornecedor"
+                  @keydown.enter.prevent="filteredSuppliers[0] && selectSupplier(filteredSuppliers[0].id)"
+                />
+              </label>
+              <ul v-if="filteredSuppliers.length" class="supplier-options">
+                <li v-for="supplier in filteredSuppliers" :key="supplier.id">
+                  <button
+                    type="button"
+                    :aria-current="form.supplierId === supplier.id ? 'true' : undefined"
+                    @click="selectSupplier(supplier.id)"
+                  >{{ supplier.name }}</button>
+                </li>
+              </ul>
+              <p v-else class="form-hint" role="status">Nenhum fornecedor encontrado.</p>
             </div>
             <p v-if="supplierListError" class="form-hint warning-text" role="status">
               Não foi possível carregar os fornecedores.
@@ -523,6 +612,59 @@ async function submit(): Promise<void> {
 .supplier-picker .btn,
 .supplier-editor .btn {
   min-height: 38px;
+}
+.supplier-picker .supplier-trigger {
+  justify-content: space-between;
+  min-width: 0;
+  text-align: left;
+}
+.supplier-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.supplier-panel {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid #dce4ee;
+  border-radius: 9px;
+  background: #fff;
+}
+.supplier-panel .supplier-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #536982;
+}
+.supplier-search svg {
+  flex-shrink: 0;
+}
+.supplier-options {
+  max-height: 192px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.supplier-options button {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: #334155;
+  font-size: 13px;
+  text-align: left;
+}
+.supplier-options button:hover,
+.supplier-options button[aria-current="true"] {
+  background: #edf3fa;
+}
+.supplier-options button:focus-visible,
+.supplier-trigger:focus-visible {
+  outline: 2px solid #304f7e;
+  outline-offset: -2px;
 }
 .supplier-editor {
   margin-top: 10px;
