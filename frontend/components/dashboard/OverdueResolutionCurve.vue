@@ -28,6 +28,10 @@ const api = useApi();
 const points = ref<OverdueHistoryPoint[]>([]);
 const loading = ref(false);
 const error = ref("");
+const visibleSeries = ref<OverdueHistorySeries | "both">("both");
+const showRemaining = computed(() => visibleSeries.value !== "resolved");
+const showResolved = computed(() => visibleSeries.value !== "remaining");
+const keyboardSeries = computed<OverdueHistorySeries>(() => showResolved.value ? "resolved" : "remaining");
 
 let loadSeq = 0;
 async function load(): Promise<void> {
@@ -57,7 +61,10 @@ function formatDateLabel(date: string): string {
 }
 
 function dayAriaLabel(point: OverdueHistoryPoint): string {
-  return `${formatDateLabel(point.date)}: ${point.remaining} contratos vencidos, ${point.resolved} regularizações acumuladas. Abrir contratos desta data.`;
+  const values = [];
+  if (showRemaining.value) values.push(`${point.remaining} contratos vencidos`);
+  if (showResolved.value) values.push(`${point.resolved} regularizações acumuladas`);
+  return `${formatDateLabel(point.date)}: ${values.join(", ")}. Abrir contratos desta data.`;
 }
 
 const width = 900;
@@ -90,12 +97,15 @@ function emitSeries(index: number, series: OverdueHistorySeries): void {
 }
 
 /**
- * Sem as bolinhas, o clique em qualquer ponto do dia abre a série mais próxima
- * do cursor. Teclado (Enter/Espaço) abre o acumulado de regularizações.
+ * Com as duas séries visíveis, o clique abre a mais próxima do cursor.
  */
 function selectDay(index: number, event: MouseEvent): void {
   const point = points.value[index];
   if (!point) return;
+  if (visibleSeries.value !== "both") {
+    emitSeries(index, visibleSeries.value);
+    return;
+  }
   const rect = event.currentTarget as SVGRectElement | null;
   const svg = rect?.ownerSVGElement;
   const bounds = svg?.getBoundingClientRect();
@@ -194,8 +204,8 @@ const tooltipStyle = computed(() => {
         <svg
           class="chart-svg"
           :viewBox="`0 0 ${width} ${height}`"
-          role="img"
-          aria-label="Histórico real de contratos vencidos restantes e regularizações acumuladas, todas as unidades"
+          role="group"
+          aria-label="Gráfico do histórico de vigência, todas as unidades"
           preserveAspectRatio="xMidYMid meet"
         >
           <g v-for="tick in yTicks" :key="tick.value">
@@ -215,8 +225,8 @@ const tooltipStyle = computed(() => {
             class="chart-hover-guide"
           />
 
-          <path v-if="remainingPath" :d="remainingPath" fill="none" class="curve-line curve-remaining" />
-          <path v-if="resolvedPath" :d="resolvedPath" fill="none" class="curve-line curve-resolved" />
+          <path v-if="showRemaining && remainingPath" :d="remainingPath" fill="none" class="curve-line curve-remaining" />
+          <path v-if="showResolved && resolvedPath" :d="resolvedPath" fill="none" class="curve-line curve-resolved" />
 
           <template v-for="(point, index) in points" :key="point.date">
             <rect
@@ -232,8 +242,8 @@ const tooltipStyle = computed(() => {
               @mouseenter="hoveredIndex = index"
               @mouseleave="hoveredIndex = null"
               @click="selectDay(index, $event)"
-              @keydown.enter.prevent="emitSeries(index, 'resolved')"
-              @keydown.space.prevent="emitSeries(index, 'resolved')"
+              @keydown.enter.prevent="emitSeries(index, keyboardSeries)"
+              @keydown.space.prevent="emitSeries(index, keyboardSeries)"
             />
             <text :x="x(index)" :y="height - 16" text-anchor="middle" class="chart-x-label" :class="{ 'chart-x-label--active': hoveredIndex === index }">
               {{ formatDateLabel(point.date) }}
@@ -243,15 +253,20 @@ const tooltipStyle = computed(() => {
 
         <div v-if="hoveredPoint" class="chart-tooltip" :style="tooltipStyle">
           <div class="chart-tooltip-title">{{ formatDateLabel(hoveredPoint.date) }}</div>
-          <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-remaining-dot" /><span>Restantes: <strong>{{ formatNumber(hoveredPoint.remaining, 0) }}</strong></span></div>
-          <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-resolved-dot" /><span>Regularizações (acumulado): <strong>{{ formatNumber(hoveredPoint.resolved, 0) }}</strong></span></div>
-          <div v-if="hoveredResolvedDelta !== null" class="chart-tooltip-row"><span>Desde o registro anterior: <strong>+{{ formatNumber(hoveredResolvedDelta, 0) }}</strong></span></div>
+          <div v-if="showRemaining" class="chart-tooltip-row"><span class="chart-tooltip-dot curve-remaining-dot" /><span>Restantes: <strong>{{ formatNumber(hoveredPoint.remaining, 0) }}</strong></span></div>
+          <div v-if="showResolved" class="chart-tooltip-row"><span class="chart-tooltip-dot curve-resolved-dot" /><span>Regularizações (acumulado): <strong>{{ formatNumber(hoveredPoint.resolved, 0) }}</strong></span></div>
+          <div v-if="showResolved && hoveredResolvedDelta !== null" class="chart-tooltip-row"><span>Desde o registro anterior: <strong>+{{ formatNumber(hoveredResolvedDelta, 0) }}</strong></span></div>
         </div>
       </div>
 
-      <div class="chart-legend">
-        <span class="chart-legend-item"><span class="chart-legend-square curve-remaining-dot" />Vencidos restantes</span>
-        <span class="chart-legend-item"><span class="chart-legend-square curve-resolved-dot" />Regularizações (acumulado)</span>
+      <div v-if="points.length > 1" class="chart-legend" role="group" aria-label="Linhas do histórico de vigência">
+        <button type="button" class="chart-legend-item" :aria-pressed="visibleSeries === 'both'" @click="visibleSeries = 'both'">Ambas</button>
+        <button type="button" class="chart-legend-item" :aria-pressed="visibleSeries === 'remaining'" @click="visibleSeries = 'remaining'">
+          <span class="chart-legend-square curve-remaining-dot" aria-hidden="true" />Vencidos restantes
+        </button>
+        <button type="button" class="chart-legend-item" :aria-pressed="visibleSeries === 'resolved'" @click="visibleSeries = 'resolved'">
+          <span class="chart-legend-square curve-resolved-dot" aria-hidden="true" />Regularizações (acumulado)
+        </button>
         <span class="chart-legend-hint">Clique em um dia para ver os contratos.</span>
       </div>
     </div>
@@ -408,7 +423,7 @@ const tooltipStyle = computed(() => {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 8px 18px;
+  gap: 6px;
   color: #62708a;
   font-size: 12px;
 }
@@ -416,6 +431,26 @@ const tooltipStyle = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-height: 36px;
+  padding: 5px 10px;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+.chart-legend-item:hover {
+  background: #f3f6fb;
+}
+.chart-legend-item[aria-pressed="true"] {
+  border-color: #304f7e;
+  background: #edf3fa;
+  color: #203a63;
+  font-weight: 700;
+}
+.chart-legend-item:focus-visible {
+  outline: 2px solid #304f7e;
+  outline-offset: 2px;
 }
 .chart-legend-square {
   width: 9px;
