@@ -2,7 +2,7 @@
 import { AlarmClock, BellOff, BellRing, Check, Copy, Eye, Pencil, Trash2, TriangleAlert, X } from "lucide-vue-next";
 import type { Contract, Sector } from "~/types/api";
 import { dateBr, daysToEndLabel, money, overdueDays, overdueLabel } from "~/utils/contracts";
-import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
+import { REMINDER_SCHEDULE } from "~/utils/notifications";
 
 const props = defineProps<{ contract: Contract | null; sectors: Sector[] }>();
 const emit = defineEmits<{ close: []; updated: [contract: Contract]; deleted: [contractId: string] }>();
@@ -107,11 +107,8 @@ async function confirmDelete(): Promise<void> {
             <ContractStatusBadge :alert="contract.alert" />
             <span v-if="lateDays !== null" class="contract-overdue"><AlarmClock class="size-3.5" />{{ overdueLabel(lateDays) }}</span>
             <span>{{ contract.unit }}</span><span>{{ contract.sectorName }}</span>
-            <span v-if="contract.criticality" class="pill" :class="`criticality-${contract.criticality.toLowerCase()}`">
-              Criticidade {{ CRITICALITY_LABEL[contract.criticality] }}
-            </span>
           </div>
-          <section><h3>Vigência</h3><div class="detail-grid"><div><span>Início</span><strong>{{ dateBr(contract.startDate) }}</strong></div><div><span>Fim</span><strong>{{ dateBr(contract.endDate) }}</strong></div><div><span>Dias para vencer</span><strong>{{ daysToEndLabel(contract.daysToEnd) }}</strong></div><div><span>Renovação automática</span><strong>{{ contract.autoRenewal ? 'Sim' : 'Não' }}</strong></div></div></section>
+          <section><h3>Vigência</h3><div class="detail-grid"><div><span>Início</span><strong>{{ dateBr(contract.startDate) }}</strong></div><div><span>Fim</span><strong>{{ dateBr(contract.endDate) }}</strong></div><div><span>Dias para vencer</span><strong>{{ daysToEndLabel(contract.daysToEnd) }}</strong></div></div></section>
           <section>
             <h3 class="with-icon">
               <component :is="contract.notify ? BellRing : BellOff" class="size-4" />

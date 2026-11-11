@@ -1,4 +1,4 @@
-import type { AlertAction, ContractCriticality, NotificationStatus, NotificationType } from "~/types/api";
+import type { AlertAction, NotificationStatus, NotificationType } from "~/types/api";
 
 export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   ANTECEDENCIA: "Antecedência",
@@ -20,12 +20,6 @@ export const ALERT_ACTION_LABEL: Record<AlertAction, string> = {
   sent: "Enviado",
   failed: "Falhou",
   skipped: "Ignorado",
-};
-
-export const CRITICALITY_LABEL: Record<ContractCriticality, string> = {
-  BAIXA: "Baixa",
-  MEDIA: "Média",
-  ALTA: "Alta",
 };
 
 export const PROVIDER_LABEL: Record<string, string> = {

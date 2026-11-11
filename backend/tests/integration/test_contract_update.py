@@ -8,6 +8,7 @@ Regressão do "Erro interno ao processar a requisição" ao salvar um contrato:
 
 from __future__ import annotations
 
+from asyncio import gather
 from datetime import date, timedelta
 from typing import Any
 
@@ -164,6 +165,24 @@ async def test_finalize_and_reopen(client, auth_header, db_session) -> None:
     assert reopened.json()["situation"] != "Finalizado"
 
 
+async def test_explicit_finalization_is_preserved_with_new_deadline(client, auth_header, db_session) -> None:
+    ids = await _seed(db_session)
+    url = f"{URL}/{ids['contract']}"
+    headers = auth_header("ADMIN")
+    contract = await db_session.get(Contract, ids["contract"])
+    assert contract is not None
+    contract.auditStage = "AGUARDANDO_ANALISE"
+    await db_session.commit()
+    end = (contracts_today() + timedelta(days=60)).isoformat()
+
+    response = await client.patch(url, json={"finalized": True, "endDate": end}, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["endDate"] == end
+    assert response.json()["situation"] == "Finalizado"
+    assert response.json()["auditStage"] == "FINALIZADO"
+
+
 async def test_legacy_dilation_does_not_change_deadline_or_finalize_contract(
     client, auth_header, db_session
 ) -> None:
@@ -265,6 +284,61 @@ async def test_create_contract_returns_201_or_200_with_body(client, auth_header,
     fetched = await client.get(f"{URL}/{created['id']}", headers=auth_header("ADMIN"))
     assert fetched.status_code == 200
     assert fetched.json()["supplier"] == "Fornecedor Y"
+
+
+async def test_supplier_selector_reuses_existing_and_concurrent_new_suppliers(
+    client, auth_header, db_session
+) -> None:
+    ids = await _seed(db_session)
+    headers = auth_header("ADMIN")
+    supplier_url = "/api/v1/fornecedores"
+    query = {"sectorId": ids["obras"]}
+    listed = await client.get(supplier_url, params=query, headers=headers)
+    assert listed.status_code == 200, listed.text
+    existing = listed.json()["items"][0]
+    duplicate = await client.post(
+        supplier_url, json={**query, "name": "  FORNECEDOR   X "}, headers=headers
+    )
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json() == existing
+
+    created, repeated = await gather(
+        client.post(supplier_url, json={**query, "name": "Novo Fornecedor"}, headers=headers),
+        client.post(supplier_url, json={**query, "name": "  NOVO   Fornecedôr  "}, headers=headers),
+    )
+    assert created.status_code == repeated.status_code == 200, (created.text, repeated.text)
+    supplier = created.json()
+    assert repeated.json()["id"] == supplier["id"]
+    listed = await client.get(supplier_url, params=query, headers=headers)
+    assert {item["id"] for item in listed.json()["items"]} == {existing["id"], supplier["id"]}
+
+    response = await client.post(
+        URL,
+        json={
+            **query,
+            "supplierId": supplier["id"],
+            "contractNumber": "400",
+            "serviceDescription": "Serviço",
+            "serviceValue": 100,
+            "ownMaterialValue": 0,
+            "thirdPartyMaterialValue": 0,
+            "startDate": "2025-01-01",
+            "endDate": "2030-01-01",
+            "unit": "LEM",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["supplierId"] == supplier["id"]
+    assert response.json()["supplier"] == supplier["name"]
+    assert response.json()["criticality"] is None
+    assert response.json()["autoRenewal"] is False
+
+    edited = await client.patch(
+        f"{URL}/{response.json()['id']}", json={"supplierId": existing["id"]}, headers=headers
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["supplier"] == existing["name"]
 
 
 async def test_sector_change_conflicts_with_same_number(client, auth_header, db_session) -> None:

@@ -48,6 +48,20 @@ class SupplierOut(CamelModel):
     active: bool
 
 
+class SupplierListOut(CamelModel):
+    items: list[SupplierOut]
+
+
+class SupplierCreateIn(CamelModel):
+    name: str = Field(min_length=1, max_length=240)
+    sector_id: str = Field(min_length=1)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _clean_name(cls, value: object) -> object:
+        return " ".join(value.split()) if isinstance(value, str) else value
+
+
 class ContractOut(CamelModel):
     id: str
     sector_id: str
@@ -273,7 +287,8 @@ class ResponsibleListOut(CamelModel):
 
 class ContractCreateIn(CamelModel):
     sector_id: str
-    supplier: str = Field(min_length=1)
+    supplier: str | None = Field(default=None, min_length=1, max_length=240)
+    supplier_id: str | None = Field(default=None, min_length=1)
     contract_number: str = Field(min_length=1)
     # Cadastro manual exige todos os dados do contrato (a importação usa outro fluxo).
     service_description: str = Field(min_length=1)
@@ -289,9 +304,9 @@ class ContractCreateIn(CamelModel):
     # Equipe de notificação do mesmo setor; obrigatória (com membros ativos) quando notify=true.
     notification_team_id: str | None = None
     auto_renewal: bool = False
-    criticality: ContractCriticality
+    criticality: ContractCriticality | None = None
 
-    @field_validator("contract_number", "supplier", "service_description", "unit")
+    @field_validator("contract_number", "service_description", "unit")
     @classmethod
     def _not_blank(cls, value: str) -> str:
         if not value.strip():
@@ -299,7 +314,11 @@ class ContractCreateIn(CamelModel):
         return value
 
     @model_validator(mode="after")
-    def _validate_dates(self) -> ContractCreateIn:
+    def _validate_contract(self) -> ContractCreateIn:
+        if self.supplier_id is not None and self.supplier is not None:
+            raise ValueError("Informe apenas um fornecedor")
+        if self.supplier_id is None and not (self.supplier and self.supplier.strip()):
+            raise ValueError("Selecione um fornecedor")
         if self.end_date < self.start_date:
             raise ValueError("O fim da vigência não pode ser anterior ao início")
         return self
@@ -307,7 +326,7 @@ class ContractCreateIn(CamelModel):
 
 # Campos que não aceitam `null` explícito no PATCH (colunas NOT NULL).
 _NON_NULLABLE_UPDATE_FIELDS = frozenset(
-    {"finalized", "notify", "auto_renewal", "sector_id", "supplier"}
+    {"finalized", "notify", "auto_renewal", "sector_id", "supplier", "supplier_id"}
 )
 
 
@@ -318,7 +337,8 @@ class ContractUpdateIn(CamelModel):
     regularization_notes: str | None = Field(default=None, max_length=10000)
     # Mudar o setor exige permissão de edição nos dois setores e uma equipe do novo setor.
     sector_id: str | None = None
-    supplier: str | None = None
+    supplier: str | None = Field(default=None, min_length=1, max_length=240)
+    supplier_id: str | None = Field(default=None, min_length=1)
     service_description: str | None = None
     service_value: Decimal | None = None
     own_material_value: Decimal | None = None
@@ -336,6 +356,10 @@ class ContractUpdateIn(CamelModel):
 
     @model_validator(mode="after")
     def _no_null_on_required(self) -> ContractUpdateIn:
+        if self.supplier_id is not None and self.supplier is not None:
+            raise ValueError("Informe apenas um fornecedor")
+        if self.supplier is not None and not self.supplier.strip():
+            raise ValueError("Selecione um fornecedor")
         for name in _NON_NULLABLE_UPDATE_FIELDS & self.model_fields_set:
             if getattr(self, name) is None:
                 raise ValueError(f"'{name}' não pode ser nulo")

@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { AlertTriangle, BellRing, CheckCircle2 } from "lucide-vue-next";
+import { AlertTriangle, BellRing, CheckCircle2, Plus } from "lucide-vue-next";
 import type {
   Contract,
   ContractCreatePayload,
-  ContractCriticality,
   ContractUpdatePayload,
   NotificationTeam,
   Sector,
+  Supplier,
 } from "~/types/api";
 import { CONTRACT_UNITS, contractTeamProblem, money, type TeamsLoadStatus } from "~/utils/contracts";
-import { CRITICALITY_LABEL, REMINDER_SCHEDULE } from "~/utils/notifications";
+import { createLatestRequest } from "~/utils/latestRequest";
+import { REMINDER_SCHEDULE } from "~/utils/notifications";
 
 /**
  * Formulário único de contrato (criação e edição) — os dois fluxos usam as mesmas
@@ -28,6 +29,17 @@ const api = useApi();
 const saving = ref(false);
 const error = ref("");
 const notice = ref("");
+const suppliers = ref<Supplier[]>([]);
+const loadingSuppliers = ref(false);
+const supplierListError = ref(false);
+const addingSupplier = ref(false);
+const supplierName = ref("");
+const supplierError = ref("");
+const savingSupplier = ref(false);
+const supplierInput = ref<HTMLInputElement | null>(null);
+const supplierSelect = ref<HTMLSelectElement | null>(null);
+const supplierListRequest = createLatestRequest();
+const supplierSaveRequest = createLatestRequest();
 const teamsBySector = ref<Record<string, NotificationTeam[]>>({});
 // Status separado da lista: "erro ao consultar" não pode virar "setor sem equipes".
 const teamsStatus = ref<Record<string, TeamsLoadStatus>>({});
@@ -37,7 +49,7 @@ const teamsError = computed(() => teamsStatus.value[form.sectorId] === "error");
 interface FormState {
   contractNumber: string;
   sectorId: string;
-  supplier: string;
+  supplierId: string;
   serviceDescription: string;
   unit: string;
   startDate: string;
@@ -48,15 +60,13 @@ interface FormState {
   thirdPartyMaterialValue: number;
   notify: boolean;
   notificationTeamId: string;
-  autoRenewal: boolean;
-  criticality: ContractCriticality | "";
 }
 
 function blank(): FormState {
   return {
-    contractNumber: "", sectorId: "", supplier: "", serviceDescription: "", unit: "", startDate: "", endDate: "",
+    contractNumber: "", sectorId: "", supplierId: "", serviceDescription: "", unit: "", startDate: "", endDate: "",
     finalized: false, serviceValue: 0, ownMaterialValue: 0, thirdPartyMaterialValue: 0, notify: false,
-    notificationTeamId: "", autoRenewal: false, criticality: "",
+    notificationTeamId: "",
   };
 }
 
@@ -64,7 +74,7 @@ function fromContract(contract: Contract): FormState {
   return {
     contractNumber: contract.contractNumber,
     sectorId: contract.sectorId,
-    supplier: contract.supplier,
+    supplierId: contract.supplierId,
     serviceDescription: contract.serviceDescription,
     unit: contract.unit,
     startDate: contract.startDate ?? "",
@@ -75,8 +85,6 @@ function fromContract(contract: Contract): FormState {
     thirdPartyMaterialValue: Number(contract.thirdPartyMaterialValue || 0),
     notify: contract.notify,
     notificationTeamId: contract.notificationTeamId ?? "",
-    autoRenewal: contract.autoRenewal,
-    criticality: contract.criticality ?? "",
   };
 }
 
@@ -114,6 +122,70 @@ async function loadTeams(sectorId: string, { force = false } = {}): Promise<void
   }
 }
 
+async function loadSuppliers(): Promise<void> {
+  const ticket = supplierListRequest.begin();
+  loadingSuppliers.value = true;
+  supplierListError.value = false;
+  try {
+    const response = await api.request<{ items: Supplier[] }>("/fornecedores", {
+      query: { sectorId: form.sectorId },
+      signal: ticket.signal,
+    });
+    if (ticket.isCurrent()) suppliers.value = response.items;
+  } catch {
+    if (ticket.isCurrent()) supplierListError.value = true;
+  } finally {
+    if (ticket.isCurrent()) loadingSuppliers.value = false;
+  }
+}
+
+function resetSupplierEditor(): void {
+  supplierSaveRequest.cancel();
+  addingSupplier.value = false;
+  supplierName.value = "";
+  supplierError.value = "";
+  savingSupplier.value = false;
+}
+
+async function openSupplierEditor(): Promise<void> {
+  addingSupplier.value = true;
+  await nextTick();
+  supplierInput.value?.focus();
+}
+
+async function saveSupplier(): Promise<void> {
+  if (savingSupplier.value) return;
+  const name = supplierName.value.trim();
+  if (!name) {
+    supplierError.value = "Informe o nome do fornecedor.";
+    return;
+  }
+  const ticket = supplierSaveRequest.begin();
+  savingSupplier.value = true;
+  supplierError.value = "";
+  try {
+    const supplier = await api.request<Supplier>("/fornecedores", {
+      method: "POST",
+      body: { name, sectorId: form.sectorId },
+      signal: ticket.signal,
+    });
+    if (!ticket.isCurrent()) return;
+    if (!suppliers.value.some((item) => item.id === supplier.id)) {
+      suppliers.value = [...suppliers.value, supplier].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    }
+    form.supplierId = supplier.id;
+    resetSupplierEditor();
+    await nextTick();
+    supplierSelect.value?.focus();
+  } catch (cause: unknown) {
+    if (ticket.isCurrent()) {
+      supplierError.value = cause instanceof Error ? cause.message : "Não foi possível cadastrar o fornecedor.";
+    }
+  } finally {
+    if (ticket.isCurrent()) savingSupplier.value = false;
+  }
+}
+
 watch(
   () => [props.open, props.mode, props.contract?.id] as const,
   ([open]) => {
@@ -128,6 +200,18 @@ watch(
     void loadTeams(form.sectorId);
   },
   { immediate: true },
+);
+
+watch(
+  () => [props.open, form.sectorId, props.mode, props.contract?.id] as const,
+  ([open, sectorId]) => {
+    supplierListRequest.cancel();
+    resetSupplierEditor();
+    suppliers.value = [];
+    loadingSuppliers.value = false;
+    supplierListError.value = false;
+    if (open && sectorId) void loadSuppliers();
+  },
 );
 
 // Trocar o setor invalida a equipe do setor anterior (backend também recusa a combinação).
@@ -167,18 +251,16 @@ const computedTotal = computed(
 );
 
 function validate(): string {
+  if (!form.supplierId) return "Selecione o fornecedor.";
   if (props.mode === "create") {
     if (!form.contractNumber.trim()) return "Informe o número do contrato.";
     if (!form.sectorId) return "Selecione o setor.";
-    if (!form.supplier.trim()) return "Informe o fornecedor.";
     if (!form.serviceDescription.trim()) return "Informe a prestação / objeto do contrato.";
     if (!form.unit.trim()) return "Selecione a unidade.";
     if (!form.startDate) return "Informe o início da vigência.";
     if (!form.endDate) return "Informe o fim da vigência.";
-    if (!form.criticality) return "Selecione a criticidade do contrato.";
   } else {
     if (!form.sectorId) return "Selecione o setor.";
-    if (!form.supplier.trim()) return "Informe o fornecedor.";
   }
   if (form.startDate && form.endDate && form.endDate < form.startDate)
     return "O fim da vigência não pode ser anterior ao início.";
@@ -199,7 +281,7 @@ function createPayload(): ContractCreatePayload {
   return {
     contractNumber: form.contractNumber.trim(),
     sectorId: form.sectorId,
-    supplier: form.supplier.trim(),
+    supplierId: form.supplierId,
     serviceDescription: form.serviceDescription.trim(),
     unit: form.unit.trim(),
     startDate: form.startDate,
@@ -210,9 +292,6 @@ function createPayload(): ContractCreatePayload {
     thirdPartyMaterialValue: Number(form.thirdPartyMaterialValue || 0),
     notify: form.notify,
     notificationTeamId: form.notificationTeamId || null,
-    autoRenewal: form.autoRenewal,
-    // A validação de criação exige criticidade; o cast reflete essa garantia.
-    criticality: form.criticality as ContractCriticality,
   };
 }
 
@@ -221,23 +300,22 @@ function updatePayload(): ContractUpdatePayload {
   const changes: ContractUpdatePayload = {};
   const changed = <K extends keyof FormState>(key: K) => form[key] !== initial[key];
   if (changed("sectorId")) changes.sectorId = form.sectorId;
-  if (changed("supplier")) changes.supplier = form.supplier.trim();
+  if (changed("supplierId")) changes.supplierId = form.supplierId;
   if (changed("serviceDescription")) changes.serviceDescription = form.serviceDescription.trim();
   if (changed("unit")) changes.unit = form.unit.trim();
   if (changed("startDate")) changes.startDate = form.startDate || null;
   if (changed("endDate")) changes.endDate = form.endDate || null;
-  if (changed("finalized")) changes.finalized = form.finalized;
+  if (changed("finalized") || changed("endDate")) changes.finalized = form.finalized;
   if (changed("serviceValue")) changes.serviceValue = Number(form.serviceValue || 0);
   if (changed("ownMaterialValue")) changes.ownMaterialValue = Number(form.ownMaterialValue || 0);
   if (changed("thirdPartyMaterialValue")) changes.thirdPartyMaterialValue = Number(form.thirdPartyMaterialValue || 0);
   if (changed("notify")) changes.notify = form.notify;
   if (changed("notificationTeamId")) changes.notificationTeamId = form.notificationTeamId || null;
-  if (changed("autoRenewal")) changes.autoRenewal = form.autoRenewal;
-  if (changed("criticality")) changes.criticality = form.criticality || null;
   return changes;
 }
 
 async function submit(): Promise<void> {
+  if (addingSupplier.value || saving.value) return;
   error.value = validate();
   if (error.value) return;
   saving.value = true;
@@ -283,7 +361,51 @@ async function submit(): Promise<void> {
             </select>
             <input v-else :value="editableSectors[0]?.name ?? ''" disabled />
           </label>
-          <label class="span-2"><span>Fornecedor <span class="required-mark" aria-hidden="true">*</span></span><input v-model="form.supplier" required maxlength="240" /></label>
+          <div class="span-2">
+            <div class="supplier-picker">
+              <label>
+                <span>Fornecedor <span class="required-mark" aria-hidden="true">*</span></span>
+                <select ref="supplierSelect" v-model="form.supplierId" required :disabled="!form.sectorId || loadingSuppliers">
+                  <option value="" disabled>
+                    {{ loadingSuppliers ? "Carregando fornecedores…" : form.sectorId ? "Selecione o fornecedor" : "Selecione o setor primeiro" }}
+                  </option>
+                  <option
+                    v-if="contract && !suppliers.some((item) => item.id === contract?.supplierId)"
+                    :value="contract.supplierId"
+                  >{{ contract.supplier }}</option>
+                  <option v-for="supplier in suppliers" :key="supplier.id" :value="supplier.id">{{ supplier.name }}</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                class="btn"
+                :aria-expanded="addingSupplier"
+                :disabled="!form.sectorId || loadingSuppliers || addingSupplier || saving"
+                @click="openSupplierEditor"
+              ><Plus class="size-4" aria-hidden="true" />Novo fornecedor</button>
+            </div>
+            <p v-if="supplierListError" class="form-hint warning-text" role="status">
+              Não foi possível carregar os fornecedores.
+              <button type="button" class="link-button" :disabled="addingSupplier" @click="loadSuppliers">Tentar novamente</button>
+            </p>
+            <div v-if="addingSupplier" class="supplier-editor">
+              <label>
+                <span>Nome do fornecedor</span>
+                <input
+                  ref="supplierInput"
+                  v-model="supplierName"
+                  maxlength="240"
+                  :disabled="savingSupplier"
+                  @keydown.enter.prevent="saveSupplier"
+                />
+              </label>
+              <button type="button" class="btn" :disabled="savingSupplier" @click="resetSupplierEditor">Cancelar</button>
+              <button type="button" class="btn primary" :disabled="savingSupplier" @click="saveSupplier">
+                {{ savingSupplier ? "Salvando…" : "Salvar fornecedor" }}
+              </button>
+              <p v-if="supplierError" class="form-error" role="alert">{{ supplierError }}</p>
+            </div>
+          </div>
           <label class="span-2"><span>Prestação / objeto <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><textarea v-model="form.serviceDescription" rows="2" :required="mode === 'create'" /></label>
           <label>
             <span>Unidade <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
@@ -296,18 +418,20 @@ async function submit(): Promise<void> {
           </label>
           <label><span>Início da vigência <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.startDate" type="date" :required="mode === 'create'" /></label>
           <label><span>Fim da vigência <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.endDate" type="date" :required="mode === 'create'" /></label>
-          <label>
-            <span>Criticidade <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
-            <select v-model="form.criticality" :required="mode === 'create'">
-              <option value="" :disabled="mode === 'create'">{{ mode === 'create' ? 'Selecione a criticidade' : 'Não informada' }}</option>
-              <option v-for="(label, key) in CRITICALITY_LABEL" :key="key" :value="key">{{ label }}</option>
-            </select>
-          </label>
         </div>
-        <div class="checkbox-row">
-          <label class="checkbox-field"><input v-model="form.finalized" type="checkbox" /><span>Contrato finalizado</span></label>
-          <label class="checkbox-field"><input v-model="form.autoRenewal" type="checkbox" /><span>Renovação automática</span></label>
-        </div>
+        <button
+          type="button"
+          class="finalized-switch"
+          role="switch"
+          aria-label="Contrato finalizado"
+          :aria-checked="form.finalized"
+          :disabled="saving"
+          @click="form.finalized = !form.finalized"
+        >
+          <span class="switch-track" aria-hidden="true"><span /></span>
+          <span>Contrato finalizado</span>
+          <strong aria-hidden="true">{{ form.finalized ? "Sim" : "Não" }}</strong>
+        </button>
       </fieldset>
 
       <fieldset>
@@ -377,7 +501,7 @@ async function submit(): Promise<void> {
     </form>
     <template #actions>
       <button type="button" class="btn" :disabled="saving" @click="emit('close')">Cancelar</button>
-      <button type="submit" form="contract-form" class="btn primary" :disabled="saving">
+      <button type="submit" form="contract-form" class="btn primary" :disabled="saving || addingSupplier">
         {{ saving ? "Salvando…" : mode === "create" ? "Criar contrato" : "Salvar alterações" }}
       </button>
     </template>
@@ -385,6 +509,73 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
+.supplier-picker,
+.supplier-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.supplier-picker label,
+.supplier-editor label {
+  flex: 1 1 200px;
+}
+.supplier-picker .btn,
+.supplier-editor .btn {
+  min-height: 38px;
+}
+.supplier-editor {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #dce4ee;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.supplier-editor .form-error {
+  flex-basis: 100%;
+}
+.finalized-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border: 1px solid #dce4ee;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+.finalized-switch:focus-visible {
+  outline: 2px solid #304f7e;
+  outline-offset: 2px;
+}
+.finalized-switch[aria-checked="true"] {
+  border-color: #9fc58d;
+  background: #edf7e9;
+  color: #285327;
+}
+.switch-track {
+  display: flex;
+  align-items: center;
+  width: 34px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #64748b;
+}
+.switch-track span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+}
+.finalized-switch[aria-checked="true"] .switch-track {
+  justify-content: end;
+  background: #387440;
+}
 .link-button {
   margin-left: 6px;
   padding: 0;
