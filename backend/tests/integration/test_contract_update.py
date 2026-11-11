@@ -164,98 +164,46 @@ async def test_finalize_and_reopen(client, auth_header, db_session) -> None:
     assert reopened.json()["situation"] != "Finalizado"
 
 
-async def test_dilation_uses_effective_deadline_and_can_be_disabled(
+async def test_legacy_dilation_does_not_change_deadline_or_finalize_contract(
     client, auth_header, db_session
 ) -> None:
     ids = await _seed(db_session)
     url = f"{URL}/{ids['contract']}"
-    original_end = contracts_today() - timedelta(days=30)
-    dilation_end = contracts_today() + timedelta(days=60)
-
-    enabled = await client.patch(
-        url,
-        json={
-            "endDate": original_end.isoformat(),
-            "dilation": True,
-            "dilationEndDate": dilation_end.isoformat(),
-        },
-        headers=auth_header("ADMIN"),
-    )
-
-    assert enabled.status_code == 200, enabled.text
-    assert enabled.json()["endDate"] == original_end.isoformat()
-    assert enabled.json()["dilationEndDate"] == dilation_end.isoformat()
-    assert enabled.json()["effectiveEndDate"] == dilation_end.isoformat()
-    assert enabled.json()["effectiveFinalized"] is False
-    assert enabled.json()["situation"] == "Vigente"
-    summary = await client.get(f"{URL}/resumo", headers=auth_header("ADMIN"))
-    assert summary.status_code == 200
-    assert summary.json()["kpis"]["onTime"] == 1
-    assert summary.json()["kpis"]["onTimeBase"] == 1
-
-    disabled = await client.patch(
-        url,
-        json={"dilation": False},
-        headers=auth_header("ADMIN"),
-    )
-
-    assert disabled.status_code == 200, disabled.text
-    assert disabled.json()["dilation"] is False
-    assert disabled.json()["dilationEndDate"] is None
-    assert disabled.json()["effectiveEndDate"] == original_end.isoformat()
-    assert disabled.json()["effectiveFinalized"] is False
-    assert disabled.json()["situation"] == "Vencido"
-    assert disabled.json()["auditStage"] == "AGUARDANDO_ANALISE"
-    summary = await client.get(f"{URL}/resumo", headers=auth_header("ADMIN"))
-    assert summary.json()["kpis"]["onTime"] == 0
-    assert summary.json()["kpis"]["onTimeBase"] == 1
-
-
-async def test_expired_dilation_is_effectively_finalized(
-    client, auth_header, db_session
-) -> None:
-    ids = await _seed(db_session)
-    url = f"{URL}/{ids['contract']}"
-    original_end = contracts_today() - timedelta(days=10)
-    dilation_end = contracts_today() - timedelta(days=1)
+    today = contracts_today()
+    original_end = today - timedelta(days=30)
+    legacy_end = today - timedelta(days=1)
+    contract = await db_session.get(Contract, ids["contract"])
+    assert contract is not None
+    contract.endDate = original_end
+    contract.dilation = True
+    contract.dilationEndDate = legacy_end
+    contract.auditStage = "FINALIZADO"
+    await db_session.commit()
 
     response = await client.patch(
         url,
-        json={
-            "endDate": original_end.isoformat(),
-            "dilation": True,
-            "dilationEndDate": dilation_end.isoformat(),
-        },
+        json={"dilation": False, "dilationEndDate": None},
         headers=auth_header("ADMIN"),
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["finalized"] is False
-    assert response.json()["effectiveFinalized"] is True
-    assert response.json()["situation"] == "Finalizado"
-    assert response.json()["alert"] == "Finalizado"
-    assert response.json()["auditStage"] is None
+    data = response.json()
+    assert data["endDate"] == original_end.isoformat()
+    assert data["daysToEnd"] == -30
+    assert data["finalized"] is False
+    assert data["situation"] == "Vencido"
+    assert data["alert"] == "Vencido"
+    assert data["auditStage"] == "AGUARDANDO_ANALISE"
+    assert "dilation" not in data
+    assert "dilationEndDate" not in data
+    await db_session.refresh(contract)
+    assert contract.dilation is True
+    assert contract.dilationEndDate == legacy_end
 
-
-async def test_dilation_requires_a_later_date(client, auth_header, db_session) -> None:
-    ids = await _seed(db_session)
-    url = f"{URL}/{ids['contract']}"
-    original_end = contracts_today() + timedelta(days=30)
-
-    response = await client.patch(
-        url,
-        json={
-            "endDate": original_end.isoformat(),
-            "dilation": True,
-            "dilationEndDate": original_end.isoformat(),
-        },
-        headers=auth_header("ADMIN"),
-    )
-
-    assert response.status_code == 422
-    assert "posterior" in response.text
-    persisted = (await client.get(url, headers=auth_header("ADMIN"))).json()
-    assert persisted["dilation"] is False
+    summary = await client.get(f"{URL}/resumo", headers=auth_header("ADMIN"))
+    assert summary.status_code == 200
+    assert summary.json()["kpis"]["onTime"] == 0
+    assert summary.json()["kpis"]["onTimeBase"] == 1
 
 
 async def test_patch_without_changes_returns_200(client, auth_header, db_session) -> None:

@@ -32,45 +32,18 @@ from app.core.auth import CurrentUser
 from app.models.common import utcnow
 from app.models.contracts import Contract, OverdueContractTracking, OverdueDailySnapshot
 from app.modules.contracts import service
-from app.modules.contracts.rules import (
-    contracts_today,
-    derive_alert,
-    derive_situation,
-    effective_end_date,
-)
+from app.modules.contracts.rules import contracts_today, derive_situation
 from app.modules.contracts.schemas import ContractOut, OverdueHistoryOut, OverdueHistoryPointOut
 
 
 async def _current_overdue_contract_ids(session: AsyncSession) -> set[str]:
-    rows = (
-        await session.execute(
-            select(
-                Contract.id,
-                Contract.finalized,
-                Contract.endDate,
-                Contract.dilation,
-                Contract.dilationEndDate,
-            )
-        )
-    ).all()
+    rows = (await session.execute(select(Contract.id, Contract.finalized, Contract.endDate))).all()
     today = contracts_today()
-    overdue: set[str] = set()
-    for contract_id, finalized, end_date, dilation, dilation_end_date in rows:
-        situation = derive_situation(
-            finalized=finalized,
-            end_date=end_date,
-            dilation=dilation,
-            dilation_end_date=dilation_end_date,
-            today=today,
-        )
-        effective_end = effective_end_date(
-            end_date=end_date,
-            dilation=dilation,
-            dilation_end_date=dilation_end_date,
-        )
-        if derive_alert(situation=situation, end_date=effective_end, today=today) == "Vencido":
-            overdue.add(contract_id)
-    return overdue
+    return {
+        contract_id
+        for contract_id, finalized, end_date in rows
+        if derive_situation(finalized=finalized, end_date=end_date, today=today) == "Vencido"
+    }
 
 
 # Chave arbitrária e fixa do advisory lock da reconciliação (só precisa ser única no app).

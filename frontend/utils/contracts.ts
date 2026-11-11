@@ -102,9 +102,9 @@ export function daysToEndLabel(days: number | null): string {
 
 /** Dias em atraso de um contrato em aberto; `null` quando não está vencido (ou já foi finalizado). */
 export function overdueDays(
-  contract: Pick<Contract, "daysToEnd" | "finalized"> & { effectiveFinalized?: boolean },
+  contract: Pick<Contract, "daysToEnd" | "finalized">,
 ): number | null {
-  if (contract.effectiveFinalized || contract.finalized || contract.daysToEnd === null || contract.daysToEnd >= 0) return null;
+  if (contract.finalized || contract.daysToEnd === null || contract.daysToEnd >= 0) return null;
   return -contract.daysToEnd;
 }
 
@@ -115,8 +115,8 @@ export function overdueLabel(days: number): string {
 const rank: Record<ContractAlert, number> = { Regularizacao: 2, Vencido: 1, Atencao: 2, SemData: 3, Regular: 4, Finalizado: 5 };
 export function sortContracts(items: Contract[], mode: SortMode): Contract[] {
   return [...items].sort((a, b) => {
-    const aEnd = a.effectiveEndDate ?? a.endDate;
-    const bEnd = b.effectiveEndDate ?? b.endDate;
+    const aEnd = a.endDate;
+    const bEnd = b.endDate;
     const da = aEnd ? new Date(`${aEnd}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
     const db = bEnd ? new Date(`${bEnd}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
     if (mode === "Vencimento mais próximo") return da - db || a.supplier.localeCompare(b.supplier, "pt-BR");

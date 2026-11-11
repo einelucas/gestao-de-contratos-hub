@@ -121,7 +121,7 @@ class Contract(Base):
     endDate: Mapped[date | None] = mapped_column(Date, nullable=True)
     unit: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     finalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Dilação contratual: preserva o fim original e usa uma nova data efetiva.
+    # Colunas legadas mantidas para preservar os registros de dilação já gravados.
     dilation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     dilationEndDate: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Etapa do fluxo de auditoria. Nulo mantém o contrato fora do Kanban.

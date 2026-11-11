@@ -43,8 +43,6 @@ interface FormState {
   startDate: string;
   endDate: string;
   finalized: boolean;
-  dilation: boolean;
-  dilationEndDate: string;
   serviceValue: number;
   ownMaterialValue: number;
   thirdPartyMaterialValue: number;
@@ -57,7 +55,7 @@ interface FormState {
 function blank(): FormState {
   return {
     contractNumber: "", sectorId: "", supplier: "", serviceDescription: "", unit: "", startDate: "", endDate: "",
-    finalized: false, dilation: false, dilationEndDate: "", serviceValue: 0, ownMaterialValue: 0, thirdPartyMaterialValue: 0, notify: false,
+    finalized: false, serviceValue: 0, ownMaterialValue: 0, thirdPartyMaterialValue: 0, notify: false,
     notificationTeamId: "", autoRenewal: false, criticality: "",
   };
 }
@@ -72,8 +70,6 @@ function fromContract(contract: Contract): FormState {
     startDate: contract.startDate ?? "",
     endDate: contract.endDate ?? "",
     finalized: contract.finalized,
-    dilation: contract.dilation,
-    dilationEndDate: contract.dilationEndDate ?? "",
     serviceValue: Number(contract.serviceValue || 0),
     ownMaterialValue: Number(contract.ownMaterialValue || 0),
     thirdPartyMaterialValue: Number(contract.thirdPartyMaterialValue || 0),
@@ -151,13 +147,6 @@ watch(
   },
 );
 
-watch(
-  () => form.dilation,
-  (enabled) => {
-    if (!enabled) form.dilationEndDate = "";
-  },
-);
-
 const sectorTeams = computed(() => teamsBySector.value[form.sectorId] ?? []);
 const selectedTeam = computed(() => sectorTeams.value.find((team) => team.id === form.notificationTeamId) ?? null);
 const teamWarning = computed(() => {
@@ -193,12 +182,6 @@ function validate(): string {
   }
   if (form.startDate && form.endDate && form.endDate < form.startDate)
     return "O fim da vigência não pode ser anterior ao início.";
-  if (form.dilation && !form.endDate)
-    return "Para ativar a dilação, informe o fim da vigência original.";
-  if (form.dilation && !form.dilationEndDate)
-    return "Informe a data final da dilação.";
-  if (form.dilation && form.endDate && form.dilationEndDate <= form.endDate)
-    return "A data final da dilação deve ser posterior ao fim da vigência original.";
   if ([form.serviceValue, form.ownMaterialValue, form.thirdPartyMaterialValue].some((value) => Number(value) < 0))
     return "Valores não podem ser negativos.";
   const teamProblem = contractTeamProblem({
@@ -222,8 +205,6 @@ function createPayload(): ContractCreatePayload {
     startDate: form.startDate,
     endDate: form.endDate,
     finalized: form.finalized,
-    dilation: form.dilation,
-    dilationEndDate: form.dilation ? form.dilationEndDate : null,
     serviceValue: Number(form.serviceValue || 0),
     ownMaterialValue: Number(form.ownMaterialValue || 0),
     thirdPartyMaterialValue: Number(form.thirdPartyMaterialValue || 0),
@@ -246,9 +227,6 @@ function updatePayload(): ContractUpdatePayload {
   if (changed("startDate")) changes.startDate = form.startDate || null;
   if (changed("endDate")) changes.endDate = form.endDate || null;
   if (changed("finalized")) changes.finalized = form.finalized;
-  if (changed("dilation")) changes.dilation = form.dilation;
-  if (changed("dilationEndDate"))
-    changes.dilationEndDate = form.dilation ? form.dilationEndDate || null : null;
   if (changed("serviceValue")) changes.serviceValue = Number(form.serviceValue || 0);
   if (changed("ownMaterialValue")) changes.ownMaterialValue = Number(form.ownMaterialValue || 0);
   if (changed("thirdPartyMaterialValue")) changes.thirdPartyMaterialValue = Number(form.thirdPartyMaterialValue || 0);
@@ -317,9 +295,7 @@ async function submit(): Promise<void> {
             </select>
           </label>
           <label><span>Início da vigência <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.startDate" type="date" :required="mode === 'create'" /></label>
-          <label><span>Fim da vigência original <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.endDate" type="date" :required="mode === 'create'" /></label>
-          <label v-if="form.dilation"><span>Vigência da dilação até</span><input v-model="form.dilationEndDate" type="date" :min="form.endDate || undefined" /></label>
-          <p v-if="form.dilation" class="form-hint span-2">Ao término da dilação, o contrato será considerado finalizado automaticamente e não passará por vencido.</p>
+          <label><span>Fim da vigência <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span><input v-model="form.endDate" type="date" :required="mode === 'create'" /></label>
           <label>
             <span>Criticidade <span v-if="mode === 'create'" class="required-mark" aria-hidden="true">*</span></span>
             <select v-model="form.criticality" :required="mode === 'create'">
@@ -330,7 +306,6 @@ async function submit(): Promise<void> {
         </div>
         <div class="checkbox-row">
           <label class="checkbox-field"><input v-model="form.finalized" type="checkbox" /><span>Contrato finalizado</span></label>
-          <label class="checkbox-field"><input v-model="form.dilation" type="checkbox" /><span>Contrato em dilação</span></label>
           <label class="checkbox-field"><input v-model="form.autoRenewal" type="checkbox" /><span>Renovação automática</span></label>
         </div>
       </fieldset>

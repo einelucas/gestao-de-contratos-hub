@@ -81,13 +81,15 @@ async def test_contracts_inside_five_day_window_enter_awaiting_analysis(
     due_in_six = contract("D-6", 6)
     already_started = contract("D-3", 3, auditStage="EM_TRATATIVA")
     finalized_near = contract("D-4", 4, finalized=True)
-    dilated = contract(
+    previously_dilated = contract(
         "D-2",
         2,
         dilation=True,
         dilationEndDate=today + timedelta(days=60),
     )
-    db_session.add_all([due_today, due_in_five, due_in_six, already_started, finalized_near, dilated])
+    db_session.add_all(
+        [due_today, due_in_five, due_in_six, already_started, finalized_near, previously_dilated]
+    )
     await db_session.commit()
 
     response = await client.get(BOARD_URL, headers=auth_header("ADMIN"))
@@ -99,7 +101,7 @@ async def test_contracts_inside_five_day_window_enter_awaiting_analysis(
     assert stages[due_in_six.id] is None
     assert stages[already_started.id] == "EM_TRATATIVA"
     assert stages[finalized_near.id] is None
-    assert stages[dilated.id] is None
+    assert stages[previously_dilated.id] == "AGUARDANDO_ANALISE"
 
 
 async def test_new_contract_inside_five_day_window_starts_in_awaiting_analysis(
