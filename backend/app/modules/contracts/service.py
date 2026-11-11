@@ -34,8 +34,6 @@ from app.modules.contracts.rules import (
     days_to_end,
     derive_alert,
     derive_situation,
-    effective_end_date,
-    is_effectively_finalized,
 )
 from app.modules.contracts.schemas import (
     AuditStage,
@@ -54,22 +52,7 @@ from app.shared.audit import record_audit
 
 
 def to_contract_out(item: Contract, access: SectorAccess) -> ContractOut:
-    effective_end = effective_end_date(
-        end_date=item.endDate,
-        dilation=item.dilation,
-        dilation_end_date=item.dilationEndDate,
-    )
-    effective_finalized = is_effectively_finalized(
-        finalized=item.finalized,
-        dilation=item.dilation,
-        dilation_end_date=item.dilationEndDate,
-    )
-    situation = derive_situation(
-        finalized=item.finalized,
-        end_date=item.endDate,
-        dilation=item.dilation,
-        dilation_end_date=item.dilationEndDate,
-    )
+    situation = derive_situation(finalized=item.finalized, end_date=item.endDate)
     return ContractOut(
         id=item.id,
         sector_id=item.sectorId,
@@ -86,10 +69,6 @@ def to_contract_out(item: Contract, access: SectorAccess) -> ContractOut:
         end_date=item.endDate,
         unit=item.unit,
         finalized=item.finalized,
-        dilation=item.dilation,
-        dilation_end_date=item.dilationEndDate,
-        effective_end_date=effective_end,
-        effective_finalized=effective_finalized,
         audit_stage=cast(AuditStage | None, item.auditStage),
         audit_stage_entered_at=item.auditStageEnteredAt,
         regularization_stage=cast(RegularizationStage | None, item.regularizationStage),
@@ -99,9 +78,9 @@ def to_contract_out(item: Contract, access: SectorAccess) -> ContractOut:
         regularization_history=item.regularizationHistory or [],
         situation=situation,
         alert="Regularizacao"
-        if item.regularizationStage and not effective_finalized
-        else derive_alert(situation=situation, end_date=effective_end),
-        days_to_end=days_to_end(effective_end),
+        if item.regularizationStage and not item.finalized
+        else derive_alert(situation=situation, end_date=item.endDate),
+        days_to_end=days_to_end(item.endDate),
         source=item.source,
         notify=item.notify,
         notify_enabled_on=item.notifyEnabledOn,
@@ -165,8 +144,6 @@ def _snapshot(item: Contract) -> dict[str, Any]:
         "endDate",
         "unit",
         "finalized",
-        "dilation",
-        "dilationEndDate",
         "auditStage",
         "sectorId",
         "notify",
@@ -222,18 +199,6 @@ async def _validate_notification_team(session: AsyncSession, item: Contract) -> 
         problem = recipients_problem(team)
         if problem:
             raise DomainError(f"{problem}; ajuste a equipe antes de ativar os alertas")
-
-
-def _validate_dilation(item: Contract) -> None:
-    if not item.dilation:
-        item.dilationEndDate = None
-        return
-    if item.endDate is None:
-        raise DomainError("Para ativar a dilação, informe o fim da vigência original")
-    if item.dilationEndDate is None:
-        raise DomainError("Informe a data final da dilação")
-    if item.dilationEndDate <= item.endDate:
-        raise DomainError("A data final da dilação deve ser posterior ao fim da vigência original")
 
 
 def _track_notify_enabled(item: Contract, was_enabled: bool) -> None:
@@ -352,15 +317,12 @@ async def create_contract(
         endDate=body.end_date,
         unit=body.unit.strip(),
         finalized=body.finalized,
-        dilation=body.dilation,
-        dilationEndDate=body.dilation_end_date,
         notify=body.notify,
         notificationTeamId=body.notification_team_id,
         autoRenewal=body.auto_renewal,
         criticality=body.criticality,
         source="manual",
     )
-    _validate_dilation(item)
     await _validate_notification_team(session, item)
     _track_notify_enabled(item, was_enabled=False)
     sync_contract_audit_stage(item)
@@ -398,8 +360,6 @@ _UPDATE_MAPPING = {
     "end_date": "endDate",
     "unit": "unit",
     "finalized": "finalized",
-    "dilation": "dilation",
-    "dilation_end_date": "dilationEndDate",
     "notify": "notify",
     "notification_team_id": "notificationTeamId",
     "auto_renewal": "autoRenewal",
@@ -445,13 +405,6 @@ async def update_contract(
         if key in _UPDATE_MAPPING:
             setattr(item, _UPDATE_MAPPING[key], value)
 
-    _validate_dilation(item)
-    current_effective_end = effective_end_date(
-        end_date=item.endDate,
-        dilation=item.dilation,
-        dilation_end_date=item.dilationEndDate,
-    )
-
     if item.regularizationStage and item.finalized:
         item.regularizationStage = None
     if body.regularization_stage and item.finalized:
@@ -461,7 +414,7 @@ async def update_contract(
         and "regularization_stage" in body.model_fields_set
         and body.regularization_stage is None
         and not item.finalized
-        and (current_effective_end is None or current_effective_end < contracts_today())
+        and (item.endDate is None or item.endDate < contracts_today())
     ):
         raise DomainError("Para concluir, informe uma vigência atualizada ou finalize o contrato")
 
@@ -476,14 +429,12 @@ async def update_contract(
 
     await _validate_notification_team(session, item)
     _track_notify_enabled(item, was_enabled)
-    deadline_changed = bool(
-        {"end_date", "dilation", "dilation_end_date"} & body.model_fields_set
-    )
+    deadline_changed = "end_date" in body.model_fields_set
     if (
         before["regularizationStage"]
         and deadline_changed
-        and current_effective_end is not None
-        and current_effective_end >= contracts_today()
+        and item.endDate is not None
+        and item.endDate >= contracts_today()
     ):
         item.regularizationStage = None
     # A conclusão pode acontecer sem alterar a data final no mesmo PATCH.

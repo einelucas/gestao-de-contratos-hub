@@ -94,7 +94,7 @@ onMounted(() => loadContracts());
       <template v-if="selected">
         <h3>{{ selected.supplier }}</h3>
         <p>{{ selected.serviceDescription }}</p>
-        <div class="detail-grid"><p><strong>Unidade</strong>{{ selected.unit || 'Não informada' }}</p><p><strong>Setor</strong>{{ selected.sectorName }}</p><p><strong>Vigência original</strong>{{ dateBr(selected.endDate) }} · {{ selected.situation }}</p></div>
+        <div class="detail-grid"><p><strong>Unidade</strong>{{ selected.unit || 'Não informada' }}</p><p><strong>Setor</strong>{{ selected.sectorName }}</p><p><strong>Fim da vigência</strong>{{ dateBr(selected.endDate) }} · {{ selected.situation }}</p></div>
         <fieldset :disabled="!selected.canEdit || saving" class="edit-grid">
           <label>Status da tratativa<select v-model="form.stage"><option v-for="s in stages" :key="s.key" :value="s.key">{{ s.label }}</option></select></label>
           <label>Responsável<input v-model="form.responsible" maxlength="180" placeholder="Nome do responsável" /></label>

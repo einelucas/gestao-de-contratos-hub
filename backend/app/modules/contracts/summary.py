@@ -89,7 +89,7 @@ def _is_regularization(item: ContractOut) -> bool:
     quem acompanha vencimentos continua vendo o mesmo número de vencidos.
     """
     return item.alert == "Regularizacao" or (
-        not item.effective_finalized and item.audit_stage in REGULARIZATION_AUDIT_STAGES
+        not item.finalized and item.audit_stage in REGULARIZATION_AUDIT_STAGES
     )
 
 
@@ -100,7 +100,7 @@ def _status(item: ContractOut) -> str:
     em regularização continua com status "Vencido" aqui. Assim os status somam
     o total de contratos e "Em regularização" é apresentado à parte.
     """
-    return derive_alert(situation=item.situation, end_date=item.effective_end_date)
+    return derive_alert(situation=item.situation, end_date=item.end_date)
 
 
 def _group(items: list[ContractOut], key: Callable[[ContractOut], str]) -> list[SummaryGroupOut]:
@@ -144,9 +144,9 @@ async def build_summary(
         items = [
             item
             for item in items
-            if item.effective_end_date is not None
-            and (date_from is None or item.effective_end_date >= date_from)
-            and (date_to is None or item.effective_end_date <= date_to)
+            if item.end_date is not None
+            and (date_from is None or item.end_date >= date_from)
+            and (date_to is None or item.end_date <= date_to)
         ]
 
     total = len(items)
@@ -156,14 +156,14 @@ async def build_summary(
     on_time = sum(
         1
         for item in items
-        if not item.effective_finalized
-        and item.effective_end_date is not None
-        and item.effective_end_date >= today
+        if not item.finalized
+        and item.end_date is not None
+        and item.end_date >= today
     )
     on_time_base = sum(
         1
         for item in items
-        if not item.effective_finalized and item.effective_end_date is not None
+        if not item.finalized and item.end_date is not None
     )
 
     by_status = [
@@ -205,9 +205,9 @@ async def build_summary(
         in_month = [
             item
             for item in items
-            if item.effective_end_date is not None and _month_start(item.effective_end_date) == cursor
+            if item.end_date is not None and _month_start(item.end_date) == cursor
         ]
-        active = [item for item in in_month if not item.effective_finalized]
+        active = [item for item in in_month if not item.finalized]
         # A série mensal também é exclusiva: "Em regularização" é uma dimensão
         # transversal e não entra empilhada aqui (evita contar o mesmo contrato
         # como vencido e em regularização ao mesmo tempo).
@@ -227,7 +227,7 @@ async def build_summary(
         )
         cursor = _add_months(cursor, 1)
 
-    open_items = [item for item in items if not item.effective_finalized]
+    open_items = [item for item in items if not item.finalized]
     deadlines = [
         DeadlineBucketOut(
             key=key,
@@ -261,7 +261,7 @@ async def build_summary(
             regularization_with_date=sum(
                 1
                 for item in items
-                if _is_regularization(item) and item.effective_end_date is not None
+                if _is_regularization(item) and item.end_date is not None
             ),
             total=total,
             regular=counts["Regular"],
