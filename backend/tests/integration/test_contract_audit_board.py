@@ -336,13 +336,21 @@ async def test_regular_contract_can_start_audit_and_workspace_is_persisted(
 
     update = await client.post(
         f"/api/v1/contratos/{ids['regular']}/auditoria/atualizacoes",
-        data={"text": "Validar documento com @Dev Admin", "mentionedUserIds": "[]"},
+        data={"text": "📄 Validar documento com @Dev Admin", "mentionedUserIds": "[]"},
         files={"files": ("evidencia.txt", b"conteudo", "text/plain")},
         headers=auth_header("ADMIN"),
     )
     assert update.status_code == 201, update.text
-    assert update.json()["text"] == "Validar documento com @Dev Admin"
+    assert update.json()["text"] == "📄 Validar documento com @Dev Admin"
     assert update.json()["attachments"][0]["name"] == "evidencia.txt"
+
+    update_id = update.json()["id"]
+    edit = await client.patch(
+        f"/api/v1/contratos/auditoria/atualizacoes/{update_id}",
+        json={"text": "📄 Documento validado ✅", "mentionedUserIds": []},
+        headers=auth_header("ADMIN"),
+    )
+    assert edit.status_code == 200, edit.text
 
     workspace = await client.get(
         f"/api/v1/contratos/{ids['regular']}/auditoria/workspace",
@@ -350,7 +358,8 @@ async def test_regular_contract_can_start_audit_and_workspace_is_persisted(
     )
     assert workspace.status_code == 200
     assert len(workspace.json()["updates"]) == 1
-    assert [event["type"] for event in workspace.json()["activity"]] == ["FILE", "STAGE"]
+    assert workspace.json()["updates"][0]["text"] == "📄 Documento validado ✅"
+    assert [event["type"] for event in workspace.json()["activity"]] == ["COMMENT", "FILE", "STAGE"]
 
     attachment_id = workspace.json()["updates"][0]["attachments"][0]["id"]
     attachment = await client.get(
