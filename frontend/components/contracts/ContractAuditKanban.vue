@@ -145,6 +145,7 @@ const updateTextarea = ref<HTMLTextAreaElement | null>(null);
 const attachmentInput = ref<HTMLInputElement | null>(null);
 const editingUpdateId = ref<string | null>(null);
 const editingUpdateText = ref("");
+const editUpdateTextareas = ref<HTMLTextAreaElement[]>([]);
 
 const MAX_ATTACHMENT_BYTES = 5_000_000;
 const users = ref<AuditUser[]>([]);
@@ -555,6 +556,26 @@ function selectMention(user: AuditUser): void {
   nextTick(() => {
     element?.focus();
     element?.setSelectionRange(position, position);
+  });
+}
+
+function insertUpdateEmoji(emoji: string, editing = false): void {
+  const draft = editing ? editingUpdateText : newUpdateText;
+  const textarea = editing ? editUpdateTextareas.value[0] : updateTextarea.value;
+  const text = draft.value;
+  const start = textarea?.selectionStart ?? text.length;
+  const end = textarea?.selectionEnd ?? start;
+  const position = start + emoji.length;
+
+  draft.value = text.slice(0, start) + emoji + text.slice(end);
+  if (!editing) {
+    mentionOpen.value = false;
+    mentionSearch.value = "";
+  }
+
+  nextTick(() => {
+    textarea?.focus();
+    textarea?.setSelectionRange(position, position);
   });
 }
 
@@ -2245,6 +2266,8 @@ function closeContract(): void {
                         Anexar
                       </button>
 
+                      <AuditEmojiPicker :disabled="publishing" @pick="insertUpdateEmoji" />
+
                       <span class="audit-composer-hint">Ctrl + V cola prints · Ctrl + Enter envia</span>
 
                       <button
@@ -2388,11 +2411,14 @@ function closeContract(): void {
                         >
                           <template v-if="editingUpdateId === update.id">
                             <textarea
+                              ref="editUpdateTextareas"
                               v-model="editingUpdateText"
+                              :readonly="savingEdit"
                               class="audit-edit-textarea"
                             />
 
                             <div class="audit-edit-actions">
+                              <AuditEmojiPicker :disabled="savingEdit" @pick="insertUpdateEmoji($event, true)" />
                               <button
                                 type="button"
                                 class="btn small"
@@ -3967,6 +3993,7 @@ function closeContract(): void {
 .audit-update-actions {
 
   display: flex;
+  flex-wrap: wrap;
 
   align-items: center;
 
@@ -4659,6 +4686,7 @@ function closeContract(): void {
 
 .audit-edit-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 7px;
   margin-top: 8px;
