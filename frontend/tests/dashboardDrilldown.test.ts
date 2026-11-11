@@ -41,8 +41,6 @@ function makeContract(overrides: Partial<Contract>): Contract {
     responsibleUserId: null,
     responsibleUserName: null,
     responsibleEmail: null,
-    autoRenewal: false,
-    criticality: null,
     canEdit: true,
     createdAt: "",
     updatedAt: "",

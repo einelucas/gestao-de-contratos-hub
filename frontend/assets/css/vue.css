@@ -1537,18 +1537,6 @@ button:disabled {
   background: #eef1f5;
   color: #667085;
 }
-.criticality-alta {
-  background: #fdebea;
-  color: #a83128;
-}
-.criticality-media {
-  background: #fff5df;
-  color: #a76b11;
-}
-.criticality-baixa {
-  background: #eef1f5;
-  color: #667085;
-}
 .header-bell-count {
   position: absolute;
   top: 1px;

@@ -27,6 +27,9 @@ from app.modules.contracts.schemas import (
     OverdueHistoryOut,
     ResponsibleListOut,
     SectorListOut,
+    SupplierCreateIn,
+    SupplierListOut,
+    SupplierOut,
     UserSectorPermissionsIn,
     UserSectorPermissionsOut,
 )
@@ -40,6 +43,24 @@ async def list_setores(
     current_user: CurrentUser = Depends(require_user),
 ) -> SectorListOut:
     return SectorListOut(items=await service.list_sectors(session, current_user))
+
+
+@router.get("/fornecedores", response_model=SupplierListOut)
+async def list_fornecedores(
+    sector_id: str = Query(alias="sectorId"),
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_MANAGE)),
+) -> SupplierListOut:
+    return SupplierListOut(items=await service.list_suppliers(session, sector_id, current_user))
+
+
+@router.post("/fornecedores", response_model=SupplierOut)
+async def create_fornecedor(
+    body: SupplierCreateIn,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_permission(Permission.CONTRACTS_MANAGE)),
+) -> SupplierOut:
+    return await service.create_supplier(session, body, current_user)
 
 
 @router.get("/contratos", response_model=ContractListOut)

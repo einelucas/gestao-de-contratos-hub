@@ -33,6 +33,7 @@ from app.models.contracts import (
 from app.modules.contracts.audit_workflow import kanban_entry_stage
 from app.modules.contracts.overdue_history import _RECONCILE_LOCK_KEY
 from app.modules.contracts.rules import contracts_today
+from app.modules.contracts.suppliers import lock_supplier_catalog, supplier_key, suppliers_by_name
 from app.shared.audit import record_audit
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -360,8 +361,8 @@ async def preview(session: AsyncSession, sector_id: str, parsed: ParsedFile) -> 
             )
         )
     existing = (await session.execute(select(Supplier.name))).scalars().all()
-    existing_keys = {_key(name) for name in existing}
-    new_suppliers = {_key(row.supplier) for row in parsed.rows if _key(row.supplier) not in existing_keys}
+    existing_keys = {supplier_key(name) for name in existing}
+    new_suppliers = {supplier_key(row.supplier) for row in parsed.rows} - existing_keys
     today = contracts_today()
     return {
         "filename": parsed.filename,
@@ -407,6 +408,7 @@ async def confirm(
     # O mesmo lock da reconciliação protege snapshots. O lock por setor torna
     # confirmações simultâneas seriadas, inclusive quando o setor está vazio.
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _RECONCILE_LOCK_KEY})
+    await lock_supplier_catalog(session)
     sector = (
         await session.execute(select(Sector).where(Sector.id == sector_id).with_for_update())
     ).scalar_one_or_none()
@@ -427,13 +429,10 @@ async def confirm(
         # SET NULL) e o acumulado do gráfico não voltaria a zero.
         await session.execute(delete(OverdueContractTracking))
         await session.execute(delete(OverdueDailySnapshot))
-    suppliers = (
-        (await session.execute(select(Supplier).order_by(Supplier.createdAt, Supplier.id))).scalars().all()
-    )
-    by_name = {_key(supplier.name): supplier for supplier in suppliers}
+    by_name = await suppliers_by_name(session)
     created_suppliers = 0
     for row in parsed.rows:
-        key = _key(row.supplier)
+        key = supplier_key(row.supplier)
         supplier = by_name.get(key)
         if supplier is None:
             supplier = Supplier(name=row.supplier, active=True)

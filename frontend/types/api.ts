@@ -21,7 +21,11 @@ export interface Sector {
   canEdit: boolean;
 }
 
-export type ContractCriticality = "BAIXA" | "MEDIA" | "ALTA";
+export interface Supplier {
+  id: string;
+  name: string;
+  active: boolean;
+}
 
 export type ContractSituation = "Vigente" | "Vencido" | "Sem data" | "Finalizado";
 export type AuditStage =
@@ -74,8 +78,6 @@ export interface Contract {
   responsibleUserId: string | null;
   responsibleUserName: string | null;
   responsibleEmail: string | null;
-  autoRenewal: boolean;
-  criticality: ContractCriticality | null;
   canEdit: boolean;
   createdAt: string;
   updatedAt: string;
@@ -159,7 +161,7 @@ export interface ContractUpdatePayload {
   regularizationDeadline?: string | null;
   regularizationNotes?: string | null;
   sectorId?: string;
-  supplier?: string;
+  supplierId?: string;
   serviceDescription?: string;
   serviceValue?: number;
   ownMaterialValue?: number;
@@ -171,13 +173,11 @@ export interface ContractUpdatePayload {
   finalized?: boolean;
   notify?: boolean;
   notificationTeamId?: string | null;
-  autoRenewal?: boolean;
-  criticality?: ContractCriticality | null;
 }
 
-export interface ContractCreatePayload extends Omit<ContractUpdatePayload, "sectorId" | "supplier"> {
+export interface ContractCreatePayload extends Omit<ContractUpdatePayload, "sectorId" | "supplierId"> {
   sectorId: string;
-  supplier: string;
+  supplierId: string;
   contractNumber: string;
   serviceDescription: string;
   serviceValue: number;
@@ -186,7 +186,6 @@ export interface ContractCreatePayload extends Omit<ContractUpdatePayload, "sect
   startDate: string;
   endDate: string;
   unit: string;
-  criticality: ContractCriticality;
 }
 
 export interface NotificationTeamMember {

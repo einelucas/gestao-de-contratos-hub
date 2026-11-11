@@ -43,9 +43,17 @@ from app.modules.contracts.schemas import (
     RegularizationStage,
     ResponsibleOut,
     SectorOut,
+    SupplierCreateIn,
+    SupplierOut,
     UserSectorPermissionOut,
     UserSectorPermissionsIn,
     UserSectorPermissionsOut,
+)
+from app.modules.contracts.suppliers import (
+    get_or_create_supplier,
+    lock_supplier_catalog,
+    supplier_key,
+    suppliers_by_name,
 )
 from app.modules.notification_teams.service import active_recipients, load_team, recipients_problem
 from app.shared.audit import record_audit
@@ -142,6 +150,7 @@ def _snapshot(item: Contract) -> dict[str, Any]:
         "totalValue",
         "startDate",
         "endDate",
+        "supplierId",
         "unit",
         "finalized",
         "auditStage",
@@ -273,14 +282,45 @@ async def get_contract(session: AsyncSession, contract_id: str, actor: CurrentUs
     return to_contract_out(item, access)
 
 
-async def _supplier_by_name(session: AsyncSession, name: str) -> Supplier:
-    clean = " ".join(name.strip().split())
-    result = await session.execute(select(Supplier).where(func.lower(Supplier.name) == clean.lower()))
-    supplier = result.scalar_one_or_none()
-    if supplier is None:
-        supplier = Supplier(name=clean, active=True)
-        session.add(supplier)
-        await session.flush()
+async def list_suppliers(
+    session: AsyncSession, sector_id: str, current_user: CurrentUser
+) -> list[SupplierOut]:
+    access = await sector_access(session, current_user)
+    assert_can_view(access, sector_id, "Setor não encontrado")
+    assert_can_edit(access, sector_id)
+    sector = await session.get(Sector, sector_id)
+    if sector is None or not sector.active:
+        raise NotFoundError("Setor não encontrado")
+    suppliers = (await suppliers_by_name(session)).values()
+    return [
+        SupplierOut.model_validate(supplier)
+        for supplier in sorted(suppliers, key=lambda item: supplier_key(item.name))
+        if supplier.active
+    ]
+
+
+async def create_supplier(
+    session: AsyncSession, body: SupplierCreateIn, current_user: CurrentUser
+) -> SupplierOut:
+    access = await sector_access(session, current_user)
+    assert_can_view(access, body.sector_id, "Setor não encontrado")
+    assert_can_edit(access, body.sector_id)
+    sector = await session.get(Sector, body.sector_id)
+    if sector is None or not sector.active:
+        raise NotFoundError("Setor não encontrado")
+    await lock_supplier_catalog(session)
+    supplier = await get_or_create_supplier(session, body.name)
+    if not supplier.active:
+        raise ConflictError("Já existe um fornecedor inativo com esse nome")
+    result = SupplierOut.model_validate(supplier)
+    await session.commit()
+    return result
+
+
+async def _active_supplier(session: AsyncSession, supplier_id: str) -> Supplier:
+    supplier = await session.get(Supplier, supplier_id)
+    if supplier is None or not supplier.active:
+        raise NotFoundError("Fornecedor ativo não encontrado")
     return supplier
 
 
@@ -302,7 +342,12 @@ async def create_contract(
     if exists.scalar_one_or_none() is not None:
         raise ConflictError("Já existe um contrato com este número neste setor")
 
-    supplier = await _supplier_by_name(session, body.supplier)
+    if body.supplier_id is not None:
+        supplier = await _active_supplier(session, body.supplier_id)
+    else:
+        assert body.supplier is not None
+        await lock_supplier_catalog(session)
+        supplier = await get_or_create_supplier(session, body.supplier)
     calculated_total = body.service_value + body.own_material_value + body.third_party_material_value
     item = Contract(
         sectorId=body.sector_id,
@@ -375,6 +420,9 @@ async def update_contract(
     assert_can_view(access, item.sectorId)
     assert_can_edit(access, item.sectorId)
 
+    if body.supplier is not None:
+        await lock_supplier_catalog(session)
+
     # Serialize updates so concurrent movements cannot overwrite the history.
     await session.execute(select(Contract.id).where(Contract.id == contract_id).with_for_update())
     item = await _load_contract(session, contract_id)
@@ -398,9 +446,10 @@ async def update_contract(
         if duplicated.scalar_one_or_none() is not None:
             raise ConflictError("Já existe um contrato com este número no setor de destino")
         item.sectorId = new_sector_id
-    if "supplier" in changes and changes["supplier"] is not None:
-        supplier = await _supplier_by_name(session, changes.pop("supplier"))
-        item.supplierId = supplier.id
+    if body.supplier_id is not None and body.supplier_id != item.supplierId:
+        item.supplierId = (await _active_supplier(session, body.supplier_id)).id
+    elif body.supplier is not None:
+        item.supplierId = (await get_or_create_supplier(session, body.supplier)).id
     for key, value in changes.items():
         if key in _UPDATE_MAPPING:
             setattr(item, _UPDATE_MAPPING[key], value)
@@ -444,7 +493,9 @@ async def update_contract(
         before["regularizationStage"] and item.regularizationStage is None
     )
     sync_contract_audit_stage(
-        item, deadline_changed=deadline_changed, regularization_completed=regularization_completed
+        item,
+        deadline_changed=deadline_changed and body.finalized is not True,
+        regularization_completed=regularization_completed,
     )
     record_regularization_history(item, before, current_user)
     await session.flush()
