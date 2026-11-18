@@ -1506,17 +1506,11 @@ function closeContract(): void {
 
     </p>
 
-    <div
-
+    <ContentLoading
       v-if="loading && !items.length"
-
-      class="contracts-state"
-
-    >
-
-      Carregando auditoria…
-
-    </div>
+      type="heading, paragraph, card@6"
+      label="Carregando auditoria de contratos"
+    />
 
     <template v-else>
 

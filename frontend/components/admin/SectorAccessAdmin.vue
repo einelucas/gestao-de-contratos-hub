@@ -129,7 +129,7 @@ onBeforeRouteLeave(() => !dirty.value || window.confirm("Há alterações não s
       </button>
     </header>
 
-    <p v-if="loading" class="history-empty">Carregando usuários…</p>
+    <ContentLoading v-if="loading" type="heading, list-item-two-line@6" label="Carregando usuários e permissões" />
     <template v-else>
       <p v-if="!users.length" class="history-empty">Nenhum usuário ativo cadastrado.</p>
       <label v-else class="inline-field admin-filter">
@@ -143,7 +143,7 @@ onBeforeRouteLeave(() => !dirty.value || window.confirm("Há alterações não s
       <template v-if="selectedUser">
         <p class="role-line">Perfil: <span class="pill tone-info">{{ ROLE_LABEL[selectedUser.role] }}</span></p>
         <p v-if="isAdmin" class="admin-global"><ShieldCheck class="size-4" />Administrador — acesso a todos os setores. Não depende de permissões por setor.</p>
-        <p v-else-if="loadingUser" class="history-empty">Carregando permissões…</p>
+        <ContentLoading v-else-if="loadingUser" type="table-heading, table-row-divider@5" label="Carregando permissões do usuário" />
         <template v-else>
           <p v-if="isViewer" class="form-hint">Visualizadores só consultam; a edição não se aplica a este perfil.</p>
           <p v-if="!sectors.length" class="history-empty">Nenhum setor cadastrado.</p>

@@ -669,12 +669,14 @@ button:disabled {
   border-bottom: 1px solid #edf1f5;
   background: #fbfcfe;
 }
-.contract-filter-bar label {
+.contract-filter-bar label,
+.contract-filter-field {
   display: grid;
   gap: 5px;
   min-width: 0;
 }
-.contract-filter-bar label > span {
+.contract-filter-bar label > span,
+.contract-filter-field > span {
   font-size: 10px;
   font-weight: 800;
   color: #64748b;

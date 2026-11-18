@@ -5,7 +5,7 @@ export function useContracts() {
   const api = useApi();
   const contracts = ref<Contract[]>([]);
   const sectors = ref<Sector[]>([]);
-  const loading = ref(false);
+  const loading = ref(true);
   const error = ref("");
   const sectorsError = ref("");
   const lastUpdated = ref<Date | null>(null);
@@ -24,13 +24,16 @@ export function useContracts() {
     }
   }
 
-  async function loadContracts(sectorId?: string) {
+  async function loadContracts(sectorId?: string, force = false) {
     const request = contractsRequest.begin();
     loading.value = true; error.value = "";
     try {
-      const response = await api.request<{ items: Contract[]; total: number }>("/contratos", {
-        method: "GET", query: sectorId ? { sectorId } : undefined, signal: request.signal,
-      });
+      const response = await api.get<{ items: Contract[]; total: number }>(
+        "/contratos",
+        sectorId ? { sectorId } : undefined,
+        { force },
+        { signal: request.signal },
+      );
       if (!request.isCurrent()) return;
       contracts.value = response.items;
       lastUpdated.value = new Date();

@@ -18,7 +18,9 @@
     "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
+    "@mdi/js": "^7.4.47",
     "@pinia/nuxt": "^0.11.2",
+    "apexcharts": "^8.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
@@ -31,6 +33,9 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vue": "^3.5.18",
+    "vue3-apexcharts": "^1.11.3",
+    "vuetify": "^4.3.3",
+    "vuetify-nuxt-module": "^1.0.0-rc.6",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

@@ -58,7 +58,9 @@ defineExpose({ load });
       </button>
     </div>
     <p v-if="error" class="form-error">{{ error }}</p>
-    <p v-if="loading && !items.length" class="history-empty">Carregando…</p>
+    <p v-if="loading && !items.length" class="history-empty">
+      <LoadingSpinner size="sm" label="Carregando histórico…" />
+    </p>
     <p v-else-if="!items.length" class="history-empty">Nenhum alerta gerado para este contrato.</p>
     <ol v-else class="history-list">
       <li v-for="item in items" :key="item.id">

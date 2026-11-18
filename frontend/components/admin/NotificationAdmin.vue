@@ -26,7 +26,7 @@ const { load: loadAttention } = useAttention();
 
 // ---------------------------------------------------------------- histórico
 const items = ref<ContractNotification[]>([]);
-const loading = ref(false);
+const loading = ref(true);
 const error = ref("");
 const page = ref(1);
 const totalPages = ref(1);
@@ -214,8 +214,9 @@ const summary = computed(() =>
         <label><span>Até</span><input v-model="filters.ate" type="date" /></label>
       </div>
       <p v-if="error" class="form-error">{{ error }}</p>
+      <ContentLoading v-if="loading && !items.length" type="table-heading, table-row-divider@7" label="Carregando histórico de notificações" />
       <div class="table-scroll">
-        <table class="admin-table">
+        <table v-if="!loading || items.length" class="admin-table">
           <thead><tr><th>Status</th><th>Contrato</th><th>Tipo</th><th>Destinatário</th><th>Vigência</th><th>Tentativas</th><th>Última atividade</th><th /></tr></thead>
           <tbody>
             <tr v-if="!loading && !items.length"><td colspan="8" class="history-empty">Nenhum envio encontrado.</td></tr>

@@ -1,0 +1,274 @@
+/*
+ * Camada visual compartilhada com o Painel de Equipamentos.
+ *
+ * `.vuetify-form` permite migrar telas gradualmente: os controles HTML atuais
+ * recebem o padrão Vuetify sem que a estrutura ou o comportamento precise ser
+ * reescrito. As regras `.v-*` continuam disponíveis para componentes Vuetify.
+ */
+:root {
+  --hub-primary: #304f7e;
+  --hub-primary-dark: #213758;
+  --hub-secondary: #6b7280;
+  --hub-border: #cbd5e1;
+  --hub-surface: #ffffff;
+  --hub-on-surface: #26364d;
+  --hub-disabled-opacity: 0.4;
+  --v-hover-opacity: 0.04;
+  --v-focus-opacity: 0.1;
+  --v-selected-opacity: 0.08;
+  --v-pressed-opacity: 0.14;
+  --v-disabled-opacity: var(--hub-disabled-opacity);
+}
+
+/* Componentes Vuetify usados nas próximas migrações. */
+.v-btn {
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.v-btn--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.v-field {
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.v-field__input {
+  min-height: 40px;
+  padding-block: 6px;
+}
+
+.v-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* VAutocomplete de filtros, conforme o Painel de Equipamentos. */
+.dashboard-unit-autocomplete {
+  align-self: end;
+  min-width: 0;
+}
+
+.dashboard-unit-autocomplete .v-field__input {
+  min-height: 40px;
+  padding-block: 0;
+}
+
+.dashboard-unit-autocomplete .v-autocomplete__selection-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-unit-autocomplete .v-field__outline {
+  --v-field-border-width: 1px;
+  --v-field-border-opacity: 0.38;
+  align-items: stretch;
+  contain: layout;
+  display: flex;
+  height: 100%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  width: 100%;
+}
+
+.dashboard-unit-autocomplete .v-field:hover .v-field__outline,
+.dashboard-unit-autocomplete .v-field.v-field--focused .v-field__outline {
+  --v-field-border-opacity: 1;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined.v-field--focused .v-field__outline {
+  --v-field-border-width: 2px;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline {
+  border-radius: inherit;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__end,
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch::after,
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch::before,
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__start {
+  border: 0 solid;
+  opacity: var(--v-field-border-opacity);
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__start {
+  border-bottom-width: var(--v-field-border-width);
+  border-end-start-radius: inherit;
+  border-inline-start-width: var(--v-field-border-width);
+  border-start-start-radius: inherit;
+  border-top-width: var(--v-field-border-width);
+  flex: 0 0 16px;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch {
+  flex: none;
+  max-width: calc(100% - 16px);
+  position: relative;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch::after,
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch::before {
+  content: "";
+  height: 100%;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch::before {
+  border-width: var(--v-field-border-width) 0 0;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__notch::after {
+  border-width: 0 0 var(--v-field-border-width);
+  bottom: 0;
+}
+
+.dashboard-unit-autocomplete .v-field--active.v-field--variant-outlined .v-field__outline__notch::before {
+  opacity: 0;
+}
+
+.dashboard-unit-autocomplete .v-field--variant-outlined .v-field__outline__end {
+  border-bottom-width: var(--v-field-border-width);
+  border-end-end-radius: inherit;
+  border-inline-end-width: var(--v-field-border-width);
+  border-start-end-radius: inherit;
+  border-top-width: var(--v-field-border-width);
+  flex: 1;
+}
+
+.hub-searchable-select-menu .v-list,
+.hub-searchable-select-menu .v-list-item,
+.hub-searchable-select-menu .v-list-item__content {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.hub-searchable-select-menu .v-list-item-title,
+.hub-searchable-select-menu .v-list-item-subtitle {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* Compatibilidade para formulários ainda baseados em HTML nativo. */
+.dashboard-filter-bar.vuetify-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+}
+
+.vuetify-form > label {
+  gap: 6px;
+}
+
+.vuetify-form > label > span {
+  color: var(--hub-on-surface);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.dashboard-filter-bar.vuetify-form > label > input,
+.dashboard-filter-bar.vuetify-form > label > select,
+.dashboard-filter-bar.vuetify-form > label > textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--hub-border);
+  border-radius: 7px;
+  background-color: var(--hub-surface);
+  color: var(--hub-on-surface);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  padding: 7px 12px;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.dashboard-filter-bar.vuetify-form > label > select {
+  cursor: pointer;
+}
+
+.dashboard-filter-bar.vuetify-form > label > input:hover:not(:disabled),
+.dashboard-filter-bar.vuetify-form > label > select:hover:not(:disabled),
+.dashboard-filter-bar.vuetify-form > label > textarea:hover:not(:disabled) {
+  border-color: var(--hub-secondary);
+}
+
+.dashboard-filter-bar.vuetify-form > label > input:focus,
+.dashboard-filter-bar.vuetify-form > label > select:focus,
+.dashboard-filter-bar.vuetify-form > label > textarea:focus {
+  border-color: var(--hub-primary);
+  box-shadow: 0 0 0 1px var(--hub-primary);
+}
+
+.dashboard-filter-bar.vuetify-form > label > input:disabled,
+.dashboard-filter-bar.vuetify-form > label > select:disabled,
+.dashboard-filter-bar.vuetify-form > label > textarea:disabled {
+  cursor: default;
+  opacity: var(--hub-disabled-opacity);
+}
+
+.vuetify-form .filter-actions {
+  align-self: end;
+  min-height: 40px;
+}
+
+.vuetify-form .btn {
+  min-height: 40px;
+  border: 1px solid var(--hub-secondary);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--hub-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: normal;
+  padding-inline: 16px;
+  text-transform: none;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.vuetify-form .btn:hover:not(:disabled) {
+  background: rgba(107, 114, 128, var(--v-hover-opacity));
+  border-color: var(--hub-primary);
+  color: var(--hub-primary-dark);
+}
+
+.vuetify-form .btn:focus-visible {
+  outline: 2px solid rgba(48, 79, 126, 0.28);
+  outline-offset: 2px;
+}
+
+.vuetify-form .btn:active:not(:disabled) {
+  background: rgba(48, 79, 126, var(--v-pressed-opacity));
+}
+
+.vuetify-form .btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+@media (max-width: 599px) {
+  .dashboard-filter-bar.vuetify-form {
+    grid-template-columns: 1fr;
+  }
+
+  .vuetify-form .filter-actions .btn {
+    flex: 1;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 1000px) {
+  .dashboard-filter-bar.vuetify-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

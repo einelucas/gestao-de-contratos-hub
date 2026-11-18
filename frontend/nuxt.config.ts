@@ -1,12 +1,74 @@
+import { hubAutocompleteDefaults } from "./config/vuetifyDefaults";
+
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
   // SPA: a sessão de homologação é um cookie HttpOnly que só o navegador envia; sem SSR
   // não há renderização no servidor tentando ler a API sem esse cookie.
   ssr: false,
-  modules: ["@pinia/nuxt", "@nuxtjs/tailwindcss", "@nuxt/eslint"],
+  modules: ["@pinia/nuxt", "@nuxtjs/tailwindcss", "@nuxt/eslint", "vuetify-nuxt-module"],
   components: [{ path: "~/components", pathPrefix: false }],
-  css: ["~/assets/css/vue.css"],
+  css: [
+    "~/assets/css/vue.css",
+    "~/assets/css/vuetify.css",
+    "~/assets/css/vuetify-hub.css",
+  ],
+  vuetify: {
+    moduleOptions: {
+      styles: true,
+      prefixComposables: ["useLayout"],
+    },
+    vuetifyOptions: {
+      theme: {
+        defaultTheme: "light",
+        themes: {
+          light: {
+            dark: false,
+            colors: {
+              background: "#f4f5f7",
+              surface: "#ffffff",
+              primary: "#304f7e",
+              "primary-darken-1": "#213758",
+              secondary: "#6b7280",
+              "secondary-darken-1": "#4b5563",
+              accent: "#eaa239",
+              error: "#c0392b",
+              info: "#007cc5",
+              success: "#609346",
+              warning: "#eaa239",
+            },
+          },
+        },
+      },
+      icons: { defaultSet: "mdi-svg" },
+      locale: { locale: "pt", fallback: "en" },
+      localeMessages: ["en", "pt"],
+      defaults: {
+        VBtn: {
+          color: "secondary",
+          variant: "outlined",
+          rounded: "lg",
+          elevation: 0,
+        },
+        VTextField: {
+          variant: "outlined",
+          density: "comfortable",
+          hideDetails: "auto",
+        },
+        VTextarea: {
+          variant: "outlined",
+          density: "comfortable",
+          hideDetails: "auto",
+        },
+        VSelect: {
+          variant: "outlined",
+          density: "comfortable",
+          hideDetails: "auto",
+        },
+        VAutocomplete: hubAutocompleteDefaults,
+      },
+    },
+  },
   runtimeConfig: {
     // Só no servidor Nuxt: para onde o proxy /api/** encaminha (sobrescreva com NUXT_API_PROXY_TARGET).
     apiProxyTarget: process.env.NUXT_API_PROXY_TARGET || "http://localhost:8000",

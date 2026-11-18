@@ -62,7 +62,7 @@ onMounted(load);
     </div>
 
     <p v-if="message" class="text-sm text-danger">{{ message }}</p>
-    <p v-else-if="loading" class="text-sm text-neutralbrand">Carregando…</p>
+    <ContentLoading v-else-if="loading" type="table-heading, table-row-divider@6" label="Carregando registros de auditoria" />
 
     <template v-else>
       <Table>

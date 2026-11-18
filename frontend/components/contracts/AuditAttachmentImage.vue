@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, Image as ImageIcon, LoaderCircle, RotateCw, X } from "lucide-vue-next";
+import { Download, Image as ImageIcon, RotateCw, X } from "lucide-vue-next";
 import type { AuditAttachment } from "~/types/api";
 
 /**
@@ -62,8 +62,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="audit-image" :class="{ 'audit-image--file': variant === 'file' }">
     <div v-if="loading" class="audit-image-state" role="status">
-      <LoaderCircle class="size-4 animate-spin" />
-      Carregando imagem…
+      <LoadingSpinner size="sm" label="Carregando imagem…" />
     </div>
     <div v-else-if="failed || !previewUrl" class="audit-image-state">
       <ImageIcon class="size-4" />

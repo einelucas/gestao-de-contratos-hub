@@ -202,7 +202,7 @@ onBeforeRouteLeave(() => confirmDiscard());
         <select v-model="sectorFilter"><option value="">Todos os setores</option><option v-for="sector in sectors" :key="sector.id" :value="sector.id">{{ sector.name }}</option></select>
       </label>
       <p v-if="error && !draft" class="form-error" role="alert">{{ error }}</p>
-      <p v-if="loading && !teams.length" class="history-empty">Carregando equipes…</p>
+      <ContentLoading v-if="loading && !teams.length" type="heading, list-item-two-line@6" label="Carregando equipes" />
       <p v-else-if="!filteredTeams.length" class="history-empty">Nenhuma equipe cadastrada{{ sectorFilter ? " neste setor" : "" }}.</p>
       <ul v-else class="team-list">
         <li v-for="team in filteredTeams" :key="team.id">

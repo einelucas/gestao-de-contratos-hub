@@ -32,3 +32,33 @@ O Kanban reproduz a estrutura do modelo de equipamentos: filtros largos em uma l
 Nenhum achado P0, P1 ou P2 permanece.
 
 final result: passed
+
+---
+
+# Design QA — Colunas empilhadas do Dashboard
+
+- Fonte visual: [demo oficial Stacked Column do ApexCharts](https://apexcharts.com/vue-chart-demos/column-charts/stacked-column/).
+- Implementação validada: `artifacts/stacked-column-full-width.png`.
+- Componentes: `frontend/components/charts/StackedColumnChart.vue` e `frontend/pages/dashboard/index.vue`.
+
+Os gráficos “Contratos por unidade” e “Vencimentos por mês” usam as colunas empilhadas nativas do ApexCharts, com toolbar e legenda nativas. Ambos ocupam largura total e ficam um abaixo do outro para preservar a legibilidade. O clique em segmentos continua abrindo o drill-down correspondente; a legenda preserva a alternância nativa de séries.
+
+Nenhum achado P0, P1 ou P2 permanece.
+
+final result: passed
+
+---
+
+# Design QA — Histórico de vigência com ApexCharts
+
+- Fonte visual: demo oficial `https://apexcharts.com/vue-chart-demos/area-charts/area-spline/` e captura fornecida pelo usuário.
+- Implementação validada: `artifacts/overdue-apexchart-lines.png`.
+- Componente: `frontend/components/dashboard/OverdueResolutionCurve.vue`.
+
+O gráfico final usa somente as linhas suavizadas vermelha e verde, sem preenchimento de área. As datas, tooltips, acessibilidade e textos da toolbar usam o locale oficial `pt-br`. O chip “Dados reais” foi removido.
+
+A toolbar nativa mantém ampliar, reduzir, zoom por seleção, movimentação, restauração e exportação. O clique real na linha verde foi validado e abriu o modal “Contratos regularizados em 10/11/2026”, preservando o drill-down existente.
+
+Nenhum achado P0, P1 ou P2 permanece. A única falha de console observada foi o bloqueio intencional da fonte externa no navegador isolado de QA.
+
+final result: passed

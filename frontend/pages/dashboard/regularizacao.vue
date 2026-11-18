@@ -65,13 +65,13 @@ onMounted(() => loadContracts());
     <section class="surface board-toolbar">
       <input v-model="search" aria-label="Buscar contratos" placeholder="Buscar fornecedor, contrato ou responsável" />
       <select v-model="unit" aria-label="Filtrar por unidade"><option value="">Todas as unidades</option><option v-for="u in units" :key="u">{{ u }}</option></select>
-      <button class="btn" :disabled="loading || saving" @click="loadContracts()">Atualizar</button>
+      <button class="btn" :disabled="loading || saving" @click="loadContracts(undefined, true)">Atualizar</button>
       <button class="btn primary" :disabled="loading || saving" @click="picker = true">Adicionar contrato</button>
     </section>
     <p class="board-summary">{{ board.length }} contratos em regularização · {{ board.filter(late).length }} com prazo da tratativa atrasado</p>
     <p v-if="error || message" role="alert" class="contracts-state error">{{ error || message }}</p>
     <p v-if="saving" role="status">Salvando acompanhamento…</p>
-    <p v-if="loading" role="status">Carregando contratos…</p>
+    <ContentLoading v-if="loading" type="heading, paragraph, card@6" label="Carregando contratos em regularização" />
     <div v-else class="kanban" aria-label="Etapas da regularização" :aria-busy="saving">
       <section v-for="stage in stages" :key="stage.key" class="kanban-column" @dragover.prevent @drop.prevent="drop(stage.key)">
         <header><h2>{{ stage.label }}</h2><span>{{ board.filter(c => c.regularizationStage === stage.key).length }}</span></header>

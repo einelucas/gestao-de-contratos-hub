@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CheckCircle2, KeyRound, RefreshCw, ShieldCheck, UserPlus, Users } from "lucide-vue-next";
+import { VProgressLinear, VSkeletonLoader } from "vuetify/components";
 import type { UserListItem } from "~/types/api";
 
 definePageMeta({ middleware: "admin" });
@@ -13,11 +14,11 @@ const success = ref("");
 const name = ref("");
 const email = ref("");
 
-async function loadUsers(): Promise<void> {
+async function loadUsers(force = false): Promise<void> {
   loading.value = true;
   error.value = "";
   try {
-    users.value = (await api.get<{ items: UserListItem[] }>("/usuarios")).items;
+    users.value = (await api.get<{ items: UserListItem[] }>("/usuarios", undefined, { force })).items;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : "Não foi possível carregar os usuários.";
   } finally {
@@ -46,7 +47,7 @@ async function createUser(): Promise<void> {
   }
 }
 
-await loadUsers();
+onMounted(() => { void loadUsers(); });
 </script>
 
 <template>
@@ -78,9 +79,12 @@ await loadUsers();
       <section class="surface users-list-card">
         <div class="surface-header">
           <div><h2><Users class="size-5" />Usuários cadastrados</h2><p>{{ users.length }} conta(s) no Hub</p></div>
-          <button type="button" class="btn small" :disabled="loading" @click="loadUsers"><RefreshCw class="size-4" />Atualizar</button>
+          <button type="button" class="btn small" :disabled="loading" @click="loadUsers(true)"><RefreshCw class="size-4" />Atualizar</button>
         </div>
-        <div v-if="loading" class="users-list-state">Carregando usuários…</div>
+        <div v-if="loading" class="users-list-loading" aria-busy="true" aria-label="Carregando usuários">
+          <VProgressLinear color="primary" height="3" indeterminate />
+          <VSkeletonLoader type="table-heading, table-row-divider@5" />
+        </div>
         <div v-else-if="!users.length" class="users-list-state">Nenhum usuário cadastrado.</div>
         <div v-else class="users-table-wrap">
           <table class="users-table">
@@ -110,6 +114,8 @@ await loadUsers();
 .temporary-password-note strong { font-size: 13px; }
 .temporary-password-note p { margin: 3px 0 0; color: #5f6e82; font-size: 11.5px; line-height: 1.5; }
 .users-list-state { padding: 50px 20px; text-align: center; color: #738196; font-size: 13px; }
+.users-list-loading { display: grid; gap: 8px; }
+.users-list-loading :deep(.v-skeleton-loader) { background: transparent; }
 .users-table-wrap { overflow-x: auto; }
 .users-table { width: 100%; border-collapse: collapse; }
 .users-table th, .users-table td { padding: 13px 16px; border-bottom: 1px solid #edf1f5; text-align: left; color: #526176; font-size: 12px; }

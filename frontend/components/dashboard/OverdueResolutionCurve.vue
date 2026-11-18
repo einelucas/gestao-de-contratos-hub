@@ -1,24 +1,13 @@
 <script setup lang="ts">
+import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
+import ptBr from "apexcharts/dist/locales/pt-br.json";
 import { TrendingDown } from "lucide-vue-next";
+import VueApexCharts from "vue3-apexcharts";
+import { VProgressLinear, VSkeletonLoader } from "vuetify/components";
 import type { OverdueHistoryPoint, OverdueHistorySeries } from "~/types/api";
 import { formatNumber } from "~/utils/format";
 
-/**
- * Histórico REAL de resolução dos contratos vencidos — vem de
- * `GET /contratos/vencidos-historico` (org-wide, igual para todo mundo com
- * acesso ao Hub), não de projeção nem de armazenamento local do navegador.
- * O backend reconcilia a cada chamada: quem saiu da lista de vencidos vira
- * "regularizado" (acumulado, nunca diminui); quem é novo só conta como
- * "restante". O acumulado conta REGULARIZAÇÕES (ciclos resolvidos): um
- * contrato que vence, é regularizado e vence de novo conta duas vezes — por
- * isso a tela fala em "regularizações", não em "contratos regularizados".
- * Não há percentual de progresso: novos vencidos entram na série depois, então
- * resolvidos / (restantes + resolvidos) não mede avanço sobre uma base fixa.
- * É um indicador corporativo (todas as unidades): não responde aos filtros do
- * Dashboard, porque não existe histórico por unidade/período para recortar.
- * `reloadToken` é incrementado pela página sempre que o
- * Dashboard é carregado/atualizado, para a curva acompanhar o resto da tela.
- */
+/** Histórico real e corporativo, com drill-down mantido pela página. */
 const props = defineProps<{ reloadToken: number }>();
 const emit = defineEmits<{
   select: [payload: { date: string; series: OverdueHistorySeries }];
@@ -52,118 +41,190 @@ watch(() => props.reloadToken, load);
 const first = computed(() => points.value[0] ?? null);
 const latest = computed(() => points.value[points.value.length - 1] ?? null);
 
+function dateTimestamp(date: string): number {
+  return new Date(`${date}T00:00:00`).getTime();
+}
+
 function formatDateLabel(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return new Date(`${date}T00:00:00`).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 }
 
-function dayAriaLabel(point: OverdueHistoryPoint): string {
-  return `${formatDateLabel(point.date)}: ${point.remaining} contratos vencidos, ${point.resolved} regularizações acumuladas. Abrir contratos desta data.`;
-}
+function selectPoint(seriesIndex: number, dataPointIndex: number): void {
+  const point = points.value[dataPointIndex];
+  if (!point) return;
 
-const width = 900;
-const height = 300;
-const pad = { left: 56, right: 30, top: 32, bottom: 50 };
-const plotWidth = width - pad.left - pad.right;
-const plotHeight = height - pad.top - pad.bottom;
-
-const yMax = computed(() => {
-  const values = points.value.flatMap((point) => [point.remaining, point.resolved]);
-  return Math.max(1, ...values);
-});
-
-const x = (index: number) => pad.left + (index * plotWidth) / Math.max(1, points.value.length - 1);
-const y = (value: number) => height - pad.bottom - (value / yMax.value) * plotHeight;
-
-/** Faixa horizontal de cada dia: encosta nos vizinhos para toda a área ser clicável. */
-function dayBand(index: number): { x: number; width: number } {
-  const count = points.value.length;
-  if (count <= 1) return { x: pad.left, width: plotWidth };
-  const half = plotWidth / (count - 1) / 2;
-  const left = index === 0 ? pad.left : x(index) - half;
-  const right = index === count - 1 ? pad.left + plotWidth : x(index) + half;
-  return { x: left, width: Math.max(0, right - left) };
-}
-
-function emitSeries(index: number, series: OverdueHistorySeries): void {
-  const point = points.value[index];
-  if (point) emit("select", { date: point.date, series });
+  const series: OverdueHistorySeries | undefined =
+    seriesIndex === 0 ? "remaining" : seriesIndex === 1 ? "resolved" : undefined;
+  if (series) emit("select", { date: point.date, series });
 }
 
 /**
- * Sem as bolinhas, o clique em qualquer ponto do dia abre a série mais próxima
- * do cursor. Teclado (Enter/Espaço) abre o acumulado de regularizações.
+ * O ApexCharts só fornece dataPointIndex ao clicar exatamente num marcador.
+ * Como este gráfico usa linhas limpas (sem marcadores permanentes), converte o
+ * X do clique no ponto de data mais próximo quando o clique cai no traçado.
  */
-function selectDay(index: number, event: MouseEvent): void {
-  const point = points.value[index];
-  if (!point) return;
-  const rect = event.currentTarget as SVGRectElement | null;
-  const svg = rect?.ownerSVGElement;
-  const bounds = svg?.getBoundingClientRect();
-  if (!bounds?.height) {
-    emitSeries(index, "resolved");
-    return;
-  }
-  const viewY = ((event.clientY - bounds.top) / bounds.height) * height;
-  const toRemaining = Math.abs(viewY - y(point.remaining));
-  const toResolved = Math.abs(viewY - y(point.resolved));
-  emitSeries(index, toRemaining <= toResolved ? "remaining" : "resolved");
-}
+function selectNearestLinePoint(event: MouseEvent, chartContext: unknown): void {
+  const target = event.target instanceof Element ? event.target : null;
+  const seriesGroup = target?.closest<SVGGElement>(".apexcharts-series");
+  const seriesIndex = Number(seriesGroup?.getAttribute("rel")) - 1;
+  if (seriesIndex < 0 || seriesIndex > 1) return;
 
-const yTicks = computed(() => {
-  const steps = 4;
-  return Array.from({ length: steps + 1 }, (_, index) => {
-    const value = (yMax.value / steps) * index;
-    return { value, y: y(value) };
-  }).reverse();
-});
-
-function buildSmoothPath(coords: Array<{ x: number; y: number }>): string {
-  if (!coords.length) return "";
-  const first0 = coords[0];
-  if (!first0) return "";
-  if (coords.length === 1) return `M ${first0.x} ${first0.y}`;
-  const tension = 0.18;
-  let path = `M ${first0.x} ${first0.y}`;
-  for (let index = 0; index < coords.length - 1; index++) {
-    const current = coords[index];
-    const next = coords[index + 1];
-    if (!current || !next) continue;
-    const previous = coords[index - 1] ?? current;
-    const afterNext = coords[index + 2] ?? next;
-    const cp1x = current.x + (next.x - previous.x) * tension;
-    const cp1y = current.y + (next.y - previous.y) * tension;
-    const cp2x = next.x - (afterNext.x - current.x) * tension;
-    const cp2y = next.y - (afterNext.y - current.y) * tension;
-    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${next.x} ${next.y}`;
-  }
-  return path;
-}
-
-const remainingCoords = computed(() => points.value.map((point, index) => ({ x: x(index), y: y(point.remaining) })));
-const resolvedCoords = computed(() => points.value.map((point, index) => ({ x: x(index), y: y(point.resolved) })));
-const remainingPath = computed(() => buildSmoothPath(remainingCoords.value));
-const resolvedPath = computed(() => buildSmoothPath(resolvedCoords.value));
-
-const hoveredIndex = ref<number | null>(null);
-const hoveredPoint = computed(() => (hoveredIndex.value === null ? null : (points.value[hoveredIndex.value] ?? null)));
-// Regularizações registradas entre o ponto anterior e o ponto em foco.
-const hoveredResolvedDelta = computed(() => {
-  if (hoveredIndex.value === null || hoveredIndex.value === 0) return null;
-  const point = points.value[hoveredIndex.value];
-  const previous = points.value[hoveredIndex.value - 1];
-  return point && previous ? point.resolved - previous.resolved : null;
-});
-
-const tooltipStyle = computed(() => {
-  if (hoveredIndex.value === null) return {};
-  const px = (x(hoveredIndex.value) / width) * 100;
-  const alignRight = px > 62;
-  return {
-    left: `${px}%`,
-    top: `${(pad.top / height) * 100}%`,
-    transform: `translate(${alignRight ? "-100%" : "0%"}, 0) translate(${alignRight ? "-10px" : "10px"}, 0)`,
+  const context = chartContext as {
+    el?: Element;
+    w?: { globals?: { minX?: number; maxX?: number } };
   };
-});
+  const grid = context.el?.querySelector<SVGElement>(".apexcharts-grid");
+  const bounds = grid?.getBoundingClientRect();
+  const minX = context.w?.globals?.minX;
+  const maxX = context.w?.globals?.maxX;
+  if (!bounds?.width || minX === undefined || maxX === undefined) return;
+
+  const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+  const clickedTimestamp = minX + ratio * (maxX - minX);
+  const nearest = points.value.reduce(
+    (best, point, index) => {
+      const distance = Math.abs(dateTimestamp(point.date) - clickedTimestamp);
+      return distance < best.distance ? { index, distance } : best;
+    },
+    { index: -1, distance: Number.POSITIVE_INFINITY },
+  );
+  if (nearest.index >= 0) selectPoint(seriesIndex, nearest.index);
+}
+
+const chartSeries = computed<ApexAxisChartSeries>(() => [
+  {
+    name: "Vencidos restantes",
+    data: points.value.map((point) => ({ x: dateTimestamp(point.date), y: point.remaining })),
+  },
+  {
+    name: "Regularizações (acumulado)",
+    data: points.value.map((point) => ({ x: dateTimestamp(point.date), y: point.resolved })),
+  },
+]);
+
+const chartOptions = computed<ApexOptions>(() => ({
+  chart: {
+    id: "overdue-resolution-history",
+    type: "line",
+    height: 350,
+    fontFamily: "Manrope, sans-serif",
+    foreColor: "#596579",
+    locales: [ptBr],
+    defaultLocale: "pt-br",
+    animations: {
+      enabled: true,
+      speed: 500,
+      animateGradually: { enabled: false },
+      dynamicAnimation: { enabled: true, speed: 350 },
+    },
+    toolbar: {
+      show: true,
+      offsetY: -4,
+      tools: {
+        download: true,
+        selection: false,
+        zoom: true,
+        zoomin: true,
+        zoomout: true,
+        pan: true,
+        reset: true,
+      },
+      export: {
+        csv: {
+          filename: "historico-vigencia-contratos-vencidos",
+          headerCategory: "Data",
+          headerValue: "Quantidade",
+          categoryFormatter: (timestamp) =>
+            timestamp === undefined ? "" : new Date(timestamp).toLocaleDateString("pt-BR"),
+        },
+        svg: { filename: "historico-vigencia-contratos-vencidos" },
+        png: { filename: "historico-vigencia-contratos-vencidos" },
+      },
+      autoSelected: "zoom",
+    },
+    zoom: {
+      enabled: true,
+      type: "x",
+      autoScaleYaxis: false,
+      allowMouseWheelZoom: "auto",
+    },
+    events: {
+      click: (event, chartContext, config) => {
+        if (!config) return;
+        if (config.seriesIndex >= 0 && config.dataPointIndex >= 0) {
+          selectPoint(config.seriesIndex, config.dataPointIndex);
+          return;
+        }
+        if (event instanceof MouseEvent) selectNearestLinePoint(event, chartContext);
+      },
+      markerClick: (_event, _chartContext, config) => {
+        if (!config) return;
+        selectPoint(config.seriesIndex, config.dataPointIndex);
+      },
+      dataPointSelection: (_event, _chartContext, config) => {
+        if (!config) return;
+        selectPoint(config.seriesIndex, config.dataPointIndex);
+      },
+    },
+  },
+  colors: ["#c0392b", "#4a7b36"],
+  dataLabels: { enabled: false },
+  stroke: { curve: "smooth", width: 4, lineCap: "round" },
+  grid: {
+    borderColor: "#e2e7ed",
+    strokeDashArray: 0,
+    padding: { top: 4, right: 12, bottom: 0, left: 8 },
+  },
+  markers: {
+    size: points.value.length === 1 ? 5 : 0,
+    strokeWidth: 0,
+    hover: { size: 6, sizeOffset: 2 },
+  },
+  xaxis: {
+    type: "datetime",
+    tickAmount: Math.min(8, Math.max(2, points.value.length - 1)),
+    labels: {
+      datetimeUTC: false,
+      format: "dd MMM",
+      style: { colors: "#596579", fontSize: "11px", fontWeight: 500 },
+    },
+    axisBorder: { show: true, color: "#cbd2dc" },
+    axisTicks: { show: true, color: "#cbd2dc" },
+    tooltip: { enabled: false },
+  },
+  yaxis: {
+    min: 0,
+    forceNiceScale: true,
+    decimalsInFloat: 0,
+    labels: {
+      formatter: (value) => formatNumber(value, 0),
+      style: { colors: ["#596579"], fontSize: "11px", fontWeight: 500 },
+    },
+  },
+  tooltip: {
+    enabled: true,
+    shared: false,
+    intersect: false,
+    followCursor: false,
+    x: { format: "dd MMM yyyy" },
+    y: { formatter: (value) => `${formatNumber(value, 0)} contratos` },
+    marker: { show: true },
+  },
+  legend: {
+    show: true,
+    position: "bottom",
+    horizontalAlign: "center",
+    fontSize: "12px",
+    fontWeight: 600,
+    labels: { colors: "#596579" },
+    markers: { size: 6, shape: "circle", offsetX: -2 },
+    itemMargin: { horizontal: 12, vertical: 4 },
+  },
+  noData: { text: "Nenhum histórico registrado." },
+}));
 </script>
 
 <template>
@@ -174,86 +235,44 @@ const tooltipStyle = computed(() => {
     class="span-2"
   >
     <div v-if="error" class="contracts-state error">{{ error }}</div>
-    <div v-else-if="loading && !points.length" class="history-empty">Carregando histórico…</div>
+    <div v-else-if="loading && !points.length" class="history-chart-loading" aria-busy="true" aria-label="Carregando histórico">
+      <VProgressLinear color="primary" height="3" indeterminate />
+      <VSkeletonLoader type="heading, paragraph, image" />
+    </div>
     <div v-else-if="!points.length" class="history-empty">Nenhum histórico de contratos vencidos registrado ainda.</div>
     <div v-else class="overdue-curve">
       <div class="curve-summary">
-        <div><span>Vencidos agora (todas as unidades)</span><strong class="danger">{{ formatNumber(latest?.remaining ?? 0, 0) }}</strong></div>
+        <div>
+          <span>Vencidos agora (todas as unidades)</span>
+          <strong class="danger">{{ formatNumber(latest?.remaining ?? 0, 0) }}</strong>
+        </div>
         <i aria-hidden="true" />
-        <div><span>Regularizações (desde o início do acompanhamento)</span><strong class="success">{{ formatNumber(latest?.resolved ?? 0, 0) }}</strong></div>
+        <div>
+          <span>Regularizações (desde o início do acompanhamento)</span>
+          <strong class="success">{{ formatNumber(latest?.resolved ?? 0, 0) }}</strong>
+        </div>
         <i aria-hidden="true" />
-        <div><span>Acompanhando desde</span><strong>{{ first ? formatDateLabel(first.date) : "—" }}</strong></div>
-        <span class="real-data-badge">Dados reais</span>
+        <div>
+          <span>Acompanhando desde</span>
+          <strong>{{ first ? formatDateLabel(first.date) : "—" }}</strong>
+        </div>
       </div>
 
       <p v-if="points.length === 1" class="single-point-hint">
         Primeiro registro de hoje. A curva cresce a cada atualização do Dashboard, conforme os contratos forem regularizados.
       </p>
 
-      <div v-else class="chart-stage">
-        <svg
-          class="chart-svg"
-          :viewBox="`0 0 ${width} ${height}`"
-          role="img"
+      <div class="apex-chart-shell">
+        <VueApexCharts
+          type="line"
+          height="350"
+          :options="chartOptions"
+          :series="chartSeries"
           aria-label="Histórico real de contratos vencidos restantes e regularizações acumuladas, todas as unidades"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          <g v-for="tick in yTicks" :key="tick.value">
-            <line :x1="pad.left" :x2="width - pad.right" :y1="tick.y" :y2="tick.y" class="chart-grid-line" />
-            <text :x="pad.left - 9" :y="tick.y + 4" text-anchor="end" class="chart-axis-label">{{ Math.round(tick.value) }}</text>
-          </g>
-
-          <line :x1="pad.left" :x2="pad.left" :y1="pad.top" :y2="height - pad.bottom" class="chart-axis" />
-          <line :x1="pad.left" :x2="width - pad.right" :y1="height - pad.bottom" :y2="height - pad.bottom" class="chart-axis" />
-
-          <line
-            v-if="hoveredIndex !== null"
-            :x1="x(hoveredIndex)"
-            :x2="x(hoveredIndex)"
-            :y1="pad.top"
-            :y2="height - pad.bottom"
-            class="chart-hover-guide"
-          />
-
-          <path v-if="remainingPath" :d="remainingPath" fill="none" class="curve-line curve-remaining" />
-          <path v-if="resolvedPath" :d="resolvedPath" fill="none" class="curve-line curve-resolved" />
-
-          <template v-for="(point, index) in points" :key="point.date">
-            <rect
-              :x="dayBand(index).x"
-              y="0"
-              :width="dayBand(index).width"
-              :height="height"
-              fill="transparent"
-              class="chart-hit-area"
-              role="button"
-              tabindex="0"
-              :aria-label="dayAriaLabel(point)"
-              @mouseenter="hoveredIndex = index"
-              @mouseleave="hoveredIndex = null"
-              @click="selectDay(index, $event)"
-              @keydown.enter.prevent="emitSeries(index, 'resolved')"
-              @keydown.space.prevent="emitSeries(index, 'resolved')"
-            />
-            <text :x="x(index)" :y="height - 16" text-anchor="middle" class="chart-x-label" :class="{ 'chart-x-label--active': hoveredIndex === index }">
-              {{ formatDateLabel(point.date) }}
-            </text>
-          </template>
-        </svg>
-
-        <div v-if="hoveredPoint" class="chart-tooltip" :style="tooltipStyle">
-          <div class="chart-tooltip-title">{{ formatDateLabel(hoveredPoint.date) }}</div>
-          <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-remaining-dot" /><span>Restantes: <strong>{{ formatNumber(hoveredPoint.remaining, 0) }}</strong></span></div>
-          <div class="chart-tooltip-row"><span class="chart-tooltip-dot curve-resolved-dot" /><span>Regularizações (acumulado): <strong>{{ formatNumber(hoveredPoint.resolved, 0) }}</strong></span></div>
-          <div v-if="hoveredResolvedDelta !== null" class="chart-tooltip-row"><span>Desde o registro anterior: <strong>+{{ formatNumber(hoveredResolvedDelta, 0) }}</strong></span></div>
-        </div>
+        />
       </div>
 
-      <div class="chart-legend">
-        <span class="chart-legend-item"><span class="chart-legend-square curve-remaining-dot" />Vencidos restantes</span>
-        <span class="chart-legend-item"><span class="chart-legend-square curve-resolved-dot" />Regularizações (acumulado)</span>
-        <span class="chart-legend-hint">Clique em um dia para ver os contratos.</span>
-      </div>
+      <p class="chart-hint">Clique em uma linha ou em um ponto para ver os contratos daquela data.</p>
     </div>
   </DashboardCard>
 </template>
@@ -297,149 +316,54 @@ const tooltipStyle = computed(() => {
   height: 26px;
   background: #e4e9f0;
 }
-.real-data-badge {
-  margin-left: auto;
-  padding: 4px 10px;
-  border: 1px solid #c9e2c0;
-  border-radius: 999px;
-  background: #eef7ea;
-  color: #3f6b32;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-.single-point-hint {
+.single-point-hint,
+.chart-hint {
   margin: 0;
-  color: #62708a;
-  font-size: 12.5px;
-}
-.chart-stage {
-  position: relative;
-  width: 100%;
-}
-.chart-svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-.chart-grid-line {
-  stroke: #edf1f5;
-  stroke-width: 1;
-}
-.chart-axis {
-  stroke: #9aa3ad;
-  stroke-width: 1.15;
-}
-.chart-axis-label,
-.chart-x-label {
-  fill: #7f8996;
-  font-size: 10px;
-  font-weight: 400;
-}
-.chart-x-label--active {
-  fill: #1f2937;
-  font-weight: 600;
-}
-.chart-hover-guide {
-  stroke: #c3cbd6;
-  stroke-width: 1;
-  stroke-dasharray: 4 4;
-  pointer-events: none;
-}
-.curve-line {
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.curve-remaining {
-  stroke: #c0392b;
-}
-.curve-resolved {
-  stroke: #4a7b36;
-}
-.chart-hit-area {
-  cursor: pointer;
-}
-.chart-hit-area:focus {
-  outline: 2px solid #20324a;
-  outline-offset: -2px;
-}
-.curve-remaining-dot {
-  fill: #c0392b;
-  background: #c0392b;
-}
-.curve-resolved-dot {
-  fill: #4a7b36;
-  background: #4a7b36;
-}
-.chart-tooltip {
-  position: absolute;
-  z-index: 5;
-  min-width: 170px;
-  padding: 9px 12px;
-  background: #f3f4f6;
-  border: 1px solid #d8dde3;
-  border-radius: 8px;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
-  color: #1f2937;
-  font-size: 12px;
-  pointer-events: none;
-}
-.chart-tooltip-title {
-  margin-bottom: 6px;
-  font-weight: 700;
-}
-.chart-tooltip-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-}
-.chart-tooltip-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.chart-legend {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  color: #62708a;
-  font-size: 12px;
-}
-.chart-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-.chart-legend-square {
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-}
-.chart-legend-hint {
-  flex-basis: 100%;
-  text-align: center;
-  color: #8a97ab;
+  color: #7b8799;
   font-size: 11px;
 }
+.chart-hint {
+  margin-top: -6px;
+  text-align: center;
+}
+.apex-chart-shell {
+  min-height: 350px;
+  border-radius: 10px;
+  background: #fff;
+}
+.history-chart-loading {
+  display: grid;
+  gap: 8px;
+  min-height: 350px;
+}
+.history-chart-loading :deep(.v-skeleton-loader) {
+  background: transparent;
+}
+.apex-chart-shell :deep(.apexcharts-toolbar) {
+  gap: 2px;
+}
+.apex-chart-shell :deep(.apexcharts-toolbar button) {
+  border-radius: 5px;
+}
+.apex-chart-shell :deep(.apexcharts-toolbar button:hover),
+.apex-chart-shell :deep(.apexcharts-toolbar button:focus-visible),
+.apex-chart-shell :deep(.apexcharts-toolbar button.apexcharts-selected) {
+  background: #e6f2ff;
+}
+.apex-chart-shell :deep(.apexcharts-line-series .apexcharts-series),
+.apex-chart-shell :deep(.apexcharts-marker) {
+  cursor: pointer;
+}
+.apex-chart-shell :deep(.apexcharts-tooltip),
+.apex-chart-shell :deep(.apexcharts-xaxistooltip) {
+  border-color: #d8dde3;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgb(15 23 42 / 12%);
+}
 @media (max-width: 768px) {
-  .real-data-badge {
-    margin-left: 0;
-  }
-  .chart-axis-label,
-  .chart-x-label {
-    font-size: 9px;
-  }
-  .chart-tooltip {
-    min-width: 150px;
-    padding: 8px 10px;
-    font-size: 11px;
+  .apex-chart-shell {
+    min-height: 315px;
+    margin-inline: -8px;
   }
 }
 </style>

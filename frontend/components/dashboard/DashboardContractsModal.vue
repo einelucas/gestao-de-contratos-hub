@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VProgressLinear, VSkeletonLoader } from "vuetify/components";
 import type { Contract } from "~/types/api";
 import { dateBr, daysToEndLabel } from "~/utils/contracts";
 
@@ -23,7 +24,10 @@ const emit = defineEmits<{ close: [] }>();
         <template v-if="loading">Carregando…</template>
         <template v-else>{{ contracts.length }} contrato{{ contracts.length === 1 ? "" : "s" }}</template>
       </p>
-      <div v-if="loading" class="history-empty">Carregando contratos…</div>
+      <div v-if="loading" class="drilldown-loading" aria-busy="true" aria-label="Carregando contratos">
+        <VProgressLinear color="primary" height="3" indeterminate />
+        <VSkeletonLoader type="table-row-divider@5" />
+      </div>
       <div v-else-if="error" class="contracts-state error">{{ error }}</div>
       <div v-else-if="!contracts.length" class="history-empty">Nenhum contrato encontrado.</div>
       <div v-else class="table-scroll drilldown-table-scroll">
@@ -75,6 +79,8 @@ const emit = defineEmits<{ close: [] }>();
   font-size: 12px;
   font-weight: 700;
 }
+.drilldown-loading { display: grid; gap: 8px; }
+.drilldown-loading :deep(.v-skeleton-loader) { background: transparent; }
 .drilldown-table-scroll {
   max-height: min(60vh, 520px);
   overflow-y: auto;
