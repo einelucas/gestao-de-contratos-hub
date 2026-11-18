@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -168,7 +168,7 @@ async def test_new_overdue_contract_does_not_reduce_resolved_count(client, auth_
 
     # O contrato que ainda não vencia agora vence (entra como "restante", não mexe no resolvido).
     contract = await db_session.get(Contract, ids["regular"][0])
-    contract.endDate = date.today() - timedelta(days=1)
+    contract.endDate = contracts_today() - timedelta(days=1)
     await db_session.commit()
 
     second = await client.get("/api/v1/contratos/vencidos-historico", headers=auth_header("ADMIN"))
